@@ -11,8 +11,11 @@ from vyper.exceptions import (
     InvalidLiteral,
     InvalidOperation,
     OverflowException,
+    StructureException,
+    UnexpectedValue,
     VyperException,
 )
+from vyper.semantics.types.utils import get_index_values
 from vyper.utils import checksum_encode, int_bounds, is_checksum_encoded
 
 from .base import VyperType
@@ -344,7 +347,7 @@ def SINT(bits):
 class Decimal2T(NumericT):
     typeclass = "decimal2"
 
-    _equality_attrs = ("decimal_places", "bits")
+    _equality_attrs = ("_decimal_places", "_bits")
 
     _is_signed = True
     _invalid_ops = (
@@ -404,6 +407,24 @@ class Decimal2T(NumericT):
         ret = super().to_abi_arg(name)
         ret["internalType"] = repr(self)
         return ret
+
+    @classmethod
+    def from_annotation(cls, node: vy_ast.VyperNode) -> "Decimal2T":
+        if not isinstance(node, vy_ast.Subscript):
+            raise StructureException(
+                f"Cannot declare {cls._id} type without a decimal precision and number of bits,"
+                f"e.g. {cls._id}[10, 168]",
+                node,
+            )
+
+        if node.get("value.id") != cls._id:
+            raise UnexpectedValue("Node id does not match type name")
+
+        indices = get_index_values(node.slice)
+
+        assert indices is not None
+
+        return cls(*indices)
 
 
 class DecimalT(NumericT):

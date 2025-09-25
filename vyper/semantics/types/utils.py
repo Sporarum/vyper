@@ -1,3 +1,5 @@
+from typing import Tuple
+
 from vyper import ast as vy_ast
 from vyper.compiler.settings import get_global_settings
 from vyper.exceptions import (
@@ -211,3 +213,50 @@ def get_index_value(node: vy_ast.VyperNode) -> int:
         raise ArrayIndexException("Subscript must be greater than 0", node)
 
     return node.value
+
+
+# TODO: Refactor into a more versatile method
+def get_index_values(node: vy_ast.VyperNode) -> Tuple[int, ...]:
+    """
+    Return the literal values for `Subscript` indices.
+
+    Arguments
+    ---------
+    node: vy_ast.VyperNode
+        Vyper ast node from the `slice` member of a Subscript node.
+
+    Returns
+    -------
+    Tuple[int, ...]
+        Literal integer values.
+        In the future, will return `None` if the subscript is an Ellipsis
+    """
+    # this is imported to improve error messages
+    # TODO: revisit this!
+    from vyper.semantics.analysis.utils import get_possible_types_from_node
+
+    node = node.reduced()
+
+    print(type(node))
+
+    if not isinstance(node, vy_ast.Tuple):
+        # even though the subscript is an invalid type, first check if it's a valid _something_
+        # this gives a more accurate error in case of e.g. a typo in a constant variable name
+        try:
+            get_possible_types_from_node(node)
+        except StructureException:
+            # StructureException is a very broad error, better to raise InvalidType in this case
+            pass
+        raise InvalidType("There needs to be multiple Subscripts", node)
+
+    def raiser(ex):
+        raise ex
+
+    return tuple(
+        [
+            element.value
+            if isinstance(element, vy_ast.Int)
+            else raiser(InvalidType("Subscript must be a literal integer", element))
+            for element in node.elements
+        ]
+    )
