@@ -3,7 +3,7 @@ from .base import TYPE_T, VOID_TYPE, KwargSettings, VyperType, is_type_t, map_vo
 from .bytestrings import BytesT, StringT, _BytestringT
 from .function import ContractFunctionT, MemberFunctionT
 from .module import InterfaceT, ModuleT
-from .primitives import AddressT, BoolT, BytesM_T, DecimalT, IntegerT, SelfT
+from .primitives import AddressT, BoolT, BytesM_T, Decimal2T, DecimalT, IntegerT, SelfT
 from .subscriptable import DArrayT, HashMapT, SArrayT, TupleT
 from .user import EventT, FlagT, StructT
 
@@ -17,6 +17,10 @@ def _get_primitive_types():
     # order of the types matters!
     # parsing of literal hex: prefer address over bytes20
     res.append(AddressT())
+
+    # note: since Decimals are parametrizable, the *class* objects
+    # are in the namespace instead of concrete type objects.
+    res.append(Decimal2T)
 
     # note: since bytestrings are parametrizable, the *class* objects
     # are in the namespace instead of concrete type objects.

@@ -341,6 +341,71 @@ def SINT(bits):
     return IntegerT(True, bits)
 
 
+class Decimal2T(NumericT):
+    typeclass = "decimal2"
+
+    _equality_attrs = ("decimal_places", "bits")
+
+    _is_signed = True
+    _invalid_ops = (
+        vy_ast.Pow,
+        vy_ast.FloorDiv,
+        vy_ast.BitAnd,
+        vy_ast.BitOr,
+        vy_ast.BitXor,
+        vy_ast.Not,
+    )
+    _valid_literal = (vy_ast.Decimal,)
+    ast_type = Decimal  # Decimal2 ?
+
+    def __init__(self, decimal_places, bits):
+        super().__init__()
+        self._decimal_places = decimal_places
+        self._bits = bits
+
+    """@cached_property
+    def _id(self):
+        return "Decimal"#f"Decimal[{self._decimal_places}, {self._bits}]"
+    """
+    _id = "Decimal"
+
+    def __repr__(self):
+        return f"{self._id}[{self._decimal_places}, {self._bits}]"
+
+    def validate_numeric_op(self, node) -> None:
+        try:
+            super().validate_numeric_op(node)
+        except VyperException as e:
+            raise _add_div_hint(node, e) from None
+
+    @cached_property
+    def abi_type(self) -> ABIType:
+        return ABI_GIntM(self._bits, self._is_signed)
+
+    @cached_property
+    def divisor(self) -> int:
+        return 10**self._decimal_places
+
+    @cached_property
+    def epsilon(self) -> Decimal:
+        return 1 / Decimal(self.divisor)
+
+    @cached_property
+    def ast_bounds(self) -> Tuple[Decimal, Decimal]:
+        return self.decimal_bounds
+
+    @cached_property
+    def decimal_bounds(self) -> Tuple[Decimal, Decimal]:
+        lo, hi = int_bounds(signed=self.is_signed, bits=self.bits)
+        DIVISOR = Decimal(self.divisor)
+        return lo / DIVISOR, hi / DIVISOR
+
+    def to_abi_arg(self, name: str = "") -> dict[str, Any]:
+        ret = super().to_abi_arg(name)
+        ret["internalType"] = repr(self)
+        return ret
+
+
 class DecimalT(NumericT):
     typeclass = "decimal"
 
