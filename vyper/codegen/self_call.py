@@ -7,6 +7,7 @@ from vyper.codegen.ir_node import IRnode
 from vyper.evm.address_space import MEMORY
 from vyper.exceptions import StateAccessViolation
 from vyper.semantics.types.subscriptable import TupleT
+from vyper import ast as vy_ast
 
 
 def _align_kwargs(func_t, args_ir):
@@ -36,6 +37,10 @@ def ir_for_self_call(stmt_expr: vy_ast.Call, context):
     # - (private function will fill return buffer and jump back)
     method_name = stmt_expr.func.attr
     func_t = stmt_expr.func._metadata["type"]
+
+    # Resolve overrides
+    while func_t.is_abstract:
+        func_t = func_t.overridden_by._metadata["func_type"]
 
     pos_args_ir = [Expr(x, context).ir_node for x in stmt_expr.args]
 
