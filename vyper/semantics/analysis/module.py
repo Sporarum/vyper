@@ -57,18 +57,13 @@ def analyze_module(module_ast: vy_ast.Module) -> ModuleT:
     _annotate_overrides(imports)
     ret = _analyze_module_r(module_ast, module_ast.is_interface)
 
-    call_graph = _modules_call_graph_with_overrides(imports)
+    _modules_call_graph_with_overrides(imports)
     _modules_compute_reachable_set_with_overrides(imports)
-
-    # Needs _modules_compute_reachable_set_with_overrides for cycle detection
-    linear_call_graph = _linearize_call_graph(call_graph)
 
     return ret
 
 # For each module, the module corresponding to each identifier
 type ImportDict = dict[vy_ast.Module, dict[str, vy_ast.Module]]
-
-type CallGraph = dict[ContractFunctionT, list[ContractFunctionT]]
 
 def _extract_imports(module_ast: vy_ast.Module, imports: ImportDict) -> ImportDict:
 
@@ -892,12 +887,9 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
         node._metadata["struct_type"] = struct_t
         self.namespace[node.name] = struct_t
 
-# TODO: rewrite using fn_t.called_functions
-def _function_call_graph_with_overrides(func: vy_ast.FunctionDef) -> list[ContractFunctionT]:
+def _function_call_graph_with_overrides(func: vy_ast.FunctionDef):
     fn_t = func._metadata["func_type"]
     function_calls = func.get_descendants(vy_ast.Call)
-
-    called_functions: list[ContractFunctionT] = []
 
     for call in function_calls:
         try:
@@ -922,28 +914,17 @@ def _function_call_graph_with_overrides(func: vy_ast.FunctionDef) -> list[Contra
                 assert "overridden_by" not in override._metadata
 
                 override_t = override._metadata["func_type"]
-                
-                called_functions.append(override_t)
-
                 fn_t.called_functions_with_overrides.add(override_t)
+
             else:
-
-                called_functions.append(call_t)
-
                 fn_t.called_functions_with_overrides.add(call_t)
 
-    return called_functions
 
-
-def _modules_call_graph_with_overrides(imports: ImportDict) -> CallGraph:
-    call_graph: CallGraph = {}
+def _modules_call_graph_with_overrides(imports: ImportDict):
     for module_ast in imports:
-
         for func in module_ast.get_children(vy_ast.FunctionDef):
-            fn_t = func._metadata["func_type"]
-            call_graph[fn_t] = _function_call_graph_with_overrides(func)
+            _function_call_graph_with_overrides(func)
 
-    return call_graph
 
 # compute reachable set and validate the call graph (detect cycles)
 def _function_compute_reachable_set_with_overrides(fn_t: ContractFunctionT, path: list[ContractFunctionT] = None) -> None:
@@ -991,25 +972,3 @@ def _modules_compute_reachable_set_with_overrides(imports: ImportDict):
                         msg += f" `@nonreentrant` and reachable from `{fn_t.name}`"
                         msg += ", which is also marked `@nonreentrant`"
                         raise CallViolation(msg, func, g.ast_def)
-
-# Create a list of functions such that functions only depend on their predecessors in the list
-# Traversing this list in order means each dependency will have been handled beforehand
-def _linearize_call_graph(call_graph: CallGraph) -> list[ContractFunctionT]:
-    def rec(reduced_call_graph: CallGraph, acc: list[ContractFunctionT]) -> list[ContractFunctionT]:
-
-        if len(reduced_call_graph) == 0:
-            return acc
-
-        removable = [func_t for func_t, callees in reduced_call_graph.items() if len(callees) == 0 ]
-
-        assert len(removable) != 0, "The call graph contained cycles, " \
-            "but was not caught by _function_compute_reachable_set_with_overrides"
-
-        new_call_graph = {
-            func_t: [callee for callee in callees if callee not in removable]
-            for func_t, callees in reduced_call_graph.items() if len(callees) > 0
-        }
-
-        return rec(new_call_graph, acc + removable)
-    
-    return rec(call_graph, [])
