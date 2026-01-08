@@ -10,6 +10,7 @@ from vyper.exceptions import (
     ExceptionList,
     FunctionDeclarationException,
     ImmutableViolation,
+    InitializerException,
     InvalidType,
     IteratorException,
     NonPayableViolation,
@@ -908,6 +909,31 @@ class ExprVisitor(VyperNodeVisitorBase):
 
                 if func_type.uses_state():
                     self.function_analyzer._handle_module_access(node.func)
+
+                if func_type.is_abstract:
+                    override_func = func_type.overridden_by
+                    assert override_func is not None
+                    
+                    # The fact this assert fails is highly concerning !
+                    #assert 'func_type' in override_func._metadata
+                    
+                    if ('func_type' in override_func._metadata and
+                        override_func._metadata['func_type'].uses_state()):
+                        
+                        override_func_t = override_func._metadata['func_type']
+                        
+                        override_module_t = override_func.module_node._metadata['type']
+                        current_module_t = node.module_node._metadata['type']
+                        
+                        initialized_modules = {t.module_info.module_t for t in current_module_t.initialized_modules}
+                        
+                        if override_module_t not in initialized_modules:
+                            override_alias = current_module_t.find_module_info(override_module_t).alias
+                            abstract_module = node.func.value.id
+                            
+                            msg = f"Cannot call `{func_type.name}` from `{abstract_module}` - it is overridden in `{override_alias}` which accesses state, but `{override_alias}` is not initialized"
+                            hint = f"add `initializes: {override_alias}` as a top-level statement to your contract"
+                            raise InitializerException(msg, node.func, hint=hint)
 
                 if func_type.is_deploy and not self.func.is_deploy:
                     raise CallViolation(
