@@ -242,6 +242,29 @@ SUCCESSFUL_OVERRIDES = [
         "x: uint256", "String[100]",
         "0", "hello",
     ),
+    
+    # === ADDING OPTIONAL PARAMETERS ===
+    
+    # Override adds optional parameter to abstract with no parameters
+    (
+        "x: uint256 = 100", "uint256", "x",
+        "", "uint256",
+        "", 100,
+    ),
+    
+    # Override adds optional parameter to abstract with one parameter
+    (
+        "x: uint256, y: uint256 = 50", "uint256", "x + y", 
+        "x: uint256", "uint256",
+        "10", 60,
+    ),
+    
+    # Override adds multiple optional parameters
+    (
+        "x: uint256, y: uint256 = 20, z: uint256 = 30", "uint256", "x + y + z",
+        "x: uint256", "uint256",
+        "10", 60,
+    ),
 ]
 
 FAILING_OVERRIDES = [
@@ -262,7 +285,7 @@ FAILING_OVERRIDES = [
     (
         "x: uint256, y: uint256", "uint256", "x + y",
         "x: uint256", "uint256",
-        FunctionDeclarationException, "Override does not have the correct number of parameters."
+        FunctionDeclarationException, "Override has mandatory parameter `y: uint256` not present in the abstract method."
     ),
     
     # === PARAMETER MISMATCH ERRORS ===

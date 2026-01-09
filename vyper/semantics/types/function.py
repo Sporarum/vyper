@@ -2,11 +2,13 @@ import re
 from dataclasses import dataclass
 from functools import cached_property
 from typing import Any, Dict, List, Optional, Tuple
+from itertools import zip_longest
 
 from vyper import ast as vy_ast
 from vyper.ast.validation import validate_call_args
 from vyper.compiler.settings import Settings
 from vyper.exceptions import (
+    VyperException,
     ArgumentException,
     CallViolation,
     CompilerPanic,
@@ -649,26 +651,48 @@ class ContractFunctionT(VyperType):
 
         discrepancies: ExceptionList = ExceptionList()
 
-        if len(parameters_override) != len(parameters_abstract):
+        def pretty_param(param: _FunctionArg) -> str:
+            return f"`{param.name}: {param.typ._id}`"
+
+        def parameter_override_discrepancy(p_override: _FunctionArg, p_abstract: _FunctionArg | None) -> VyperException | None:
+            if p_abstract is None:
+                if isinstance(p_override, KeywordArg):
+                    return None
+                else:
+                    return FunctionDeclarationException(
+                        f"Override has mandatory parameter {pretty_param(p_override)} "
+                        "not present in the abstract method.",
+                        p_override.ast_source,
+                        hint = "Remove the extra parameter, or add a default value",
+                    )
+
+            if p_override.name == p_abstract.name and p_override.typ.is_supertype_of(p_abstract.typ):
+                return None
+            else:
+                return FunctionDeclarationException(
+                    "Override parameter mismatch: "
+                    f"Got {pretty_param(p_override)}, "
+                    f"but expected {pretty_param(p_abstract)} (or a supertype)",
+                    p_override.ast_source, p_abstract.ast_source,
+                )
+
+        # Parameter validation
+
+        if len(parameters_override) < len(parameters_abstract):
             discrepancies.append(FunctionDeclarationException(
                 "Override does not have the correct number of parameters. "
-                f"Has {len(parameters_override)}, should have {len(parameters_abstract)}",
-                self.ast_def, abstract_t.ast_def
+                f"Has {len(parameters_override)}, should have {len(parameters_abstract)} (or more)",
+                self.ast_def, abstract_t.ast_def,
             ))
         else:
+            for p_override, p_abstract in zip_longest(parameters_override, parameters_abstract):
 
-            def pretty_param(param: _FunctionArg) -> str:
-                return f"`{param.name}: {param.typ._id}`"
+                discrepancy = parameter_override_discrepancy(p_override, p_abstract)
 
-            for param_override, param_abstract in zip(parameters_override, parameters_abstract):
-                if param_override.name != param_abstract.name or\
-                    not param_override.typ.is_supertype_of(param_abstract.typ):
-                        discrepancies.append(FunctionDeclarationException(
-                            "Override parameter mismatch: "
-                            f"Got {pretty_param(param_override)}, "
-                            f"but expected {pretty_param(param_abstract)} (or a supertype)",
-                            param_override.ast_source, param_abstract.ast_source
-                        ))
+                if discrepancy is not None:
+                    discrepancies.append(discrepancy)
+
+        # Return type validation
 
         if return_type_abstract:
             if return_type_override:
@@ -692,6 +716,8 @@ class ContractFunctionT(VyperType):
                     self.ast_def, abstract_t.ast_def
                 ))
 
+        # Mutability validation
+
         if self.mutability > abstract_t.mutability:
             
             # There is nothing stricter than @pure
@@ -702,6 +728,8 @@ class ContractFunctionT(VyperType):
                 f"Got {self.mutability}, but expected {abstract_t.mutability}{or_stricter}",
                 self.ast_def, abstract_t.ast_def
             ))
+
+        # Reentrancy validation
         
         if self.nonreentrant != abstract_t.nonreentrant:
             def _is(b: bool) -> str:
