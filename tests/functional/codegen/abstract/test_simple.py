@@ -407,6 +407,22 @@ FAILING_OVERRIDES = [
         "x: uint256", "Bytes[32]",
         FunctionDeclarationException, "Override return type mismatch"
     ),
+    
+    # === ABSTRACT METHODS WITH OPTIONAL PARAMETERS ===
+    
+    # Abstract method with one optional parameter
+    (
+        "x: uint256, y: uint256 = 10", "uint256", "x + y",
+        "x: uint256, y: uint256 = 10", "uint256",
+        FunctionDeclarationException, "Abstract methods cannot have optional parameters"
+    ),
+    
+    # Abstract method with multiple optional parameters
+    (
+        "x: uint256, y: uint256 = 10, z: uint256 = 20", "uint256", "x + y + z",
+        "x: uint256, y: uint256 = 10, z: uint256 = 20", "uint256",
+        FunctionDeclarationException, "Abstract methods cannot have optional parameters"
+    ),
 ]
 
 @pytest.mark.parametrize("successful_override", SUCCESSFUL_OVERRIDES)
