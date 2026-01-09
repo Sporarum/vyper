@@ -144,6 +144,11 @@ def _annotate_overrides(imports: ImportDict) -> None:
         for func in module_ast.get_children(vy_ast.FunctionDef):
 
             for other_module_name in _extract_overrides(func):
+
+                if other_module_name not in imports[module_ast]:
+                    # Import error will be reported later
+                    continue
+
                 other_module_ast = imports[module_ast][other_module_name]
                 
                 # Check that the overridden module is initialized
