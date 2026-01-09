@@ -911,6 +911,10 @@ class ExprVisitor(VyperNodeVisitorBase):
                     self.function_analyzer._handle_module_access(node.func)
 
                 if func_type.is_abstract:
+                    # Treat abstract method calls as mutable access for initializes
+                    # TODO: Replace this with separate logic for better error messages
+                    self.function_analyzer._handle_module_access(node.func)
+
                     override_func = func_type.overridden_by
                     assert override_func is not None
                     
