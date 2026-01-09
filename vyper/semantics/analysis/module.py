@@ -933,21 +933,17 @@ def _function_call_graph_with_overrides(func: vy_ast.FunctionDef):
         if isinstance(call_t, ContractFunctionT) and (
             call_t.is_internal or call_t.is_constructor
         ):
-            if call_t.is_abstract:
+            # Makes sure a function is not abstract, by potentially following overrides
+            def get_concrete_func_t(func_t: ContractFunctionT) -> ContractFunctionT:
+                if func_t.is_abstract:
+                    override_t = func_t.overridden_by._metadata["func_type"]
+                    return get_concrete_func_t(override_t)
+                else:
+                    return func_t
 
-                # TODO: Not overridden error
-                assert "overridden_by" in call_t.decl_node._metadata
+            concrete_t = get_concrete_func_t(call_t)
 
-                override = call_t.decl_node._metadata["overridden_by"]
-
-                # TODO: Handle case where override is itself abstract
-                assert "overridden_by" not in override._metadata
-
-                override_t = override._metadata["func_type"]
-                fn_t.called_functions_with_overrides.add(override_t)
-
-            else:
-                fn_t.called_functions_with_overrides.add(call_t)
+            fn_t.called_functions_with_overrides.add(concrete_t)
 
 
 def _modules_call_graph_with_overrides(imports: ImportDict):
