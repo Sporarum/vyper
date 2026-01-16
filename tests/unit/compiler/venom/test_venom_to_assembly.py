@@ -39,6 +39,42 @@ def test_optimistic_swap_params():
     assert asm == ["SWAP2", "PUSH1", 117, "POP", "MSTORE", "MSTORE", "JUMP"]
 
 
+def test_invoke_middle_output_unused():
+    """
+    test pop of middle output of invoke
+    """
+    code = """
+    function main {
+    main:
+        %a, %b, %c = invoke @callee
+        mstore %a, %c
+        jnz %a, @end1, @end2
+
+    end1:
+        stop
+
+    end2:
+        stop
+    }
+
+    function callee {
+    callee:
+        %retpc = param
+        %x = 1
+        %y = 2
+        %z = 3
+        ret %x, %y, %z, %retpc
+    }
+    """
+    ctx = parse_venom(code)
+    asm = VenomCompiler(ctx).generate_evm_assembly()
+
+    assert "POP" in asm, asm
+    assert asm.count("POP") == 1, asm
+    pop_idx = asm.index("POP")
+    assert pop_idx > 0 and asm[pop_idx - 1] == "SWAP1", asm
+
+
 def test_popmany_bulk_removal_of_suffix():
     compiler = VenomCompiler(IRContext())
     stack = StackModel()
