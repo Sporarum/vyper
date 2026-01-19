@@ -358,8 +358,8 @@ class VyperType:
 
         Failed comparisons must return `False`, not raise an exception.
 
-        This method does test for type equality, it is a type
-        checker function, it should have the meaning: "<self> and <other> can be used interchangeably"
+        This method does test for type equality, it is a type checker function,
+        it should have the meaning: "<self> and <other> can be used interchangeably"
 
         DO NOT override this in subclasses, instead override compare_type
 

@@ -224,7 +224,9 @@ class Convert(BuiltinFunctionT):
             if target_type.is_subtype_of(value_type):
                 raise InvalidType(f"Value and target type are both '{target_type}'", node, hint)
             else:
-                raise InvalidType(f"Value is a subtype of target type '{value_type} <: {target_type}'", node, hint)
+                raise InvalidType(
+                    f"Value is a subtype of target type '{value_type} <: {target_type}'", node, hint
+                )
 
         return [value_type, TYPE_T(target_type)]
 

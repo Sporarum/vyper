@@ -1,4 +1,4 @@
-from typing import Any, Optional, TypeAlias
+from typing import Optional, TypeAlias
 
 from vyper import ast as vy_ast
 from vyper.evm.opcodes import version_check
@@ -65,11 +65,12 @@ def analyze_module(module_ast: vy_ast.Module) -> ModuleT:
 
     return ret
 
+
 # For each module, the module corresponding to each identifier
 ImportDict: TypeAlias = dict[vy_ast.Module, dict[str, vy_ast.Module]]
 
-def _extract_imports(module_ast: vy_ast.Module, imports: ImportDict) -> ImportDict:
 
+def _extract_imports(module_ast: vy_ast.Module, imports: ImportDict) -> ImportDict:
     if module_ast in imports:
         # We have already seen this module, skip it
         return imports
@@ -89,7 +90,7 @@ def _extract_imports(module_ast: vy_ast.Module, imports: ImportDict) -> ImportDi
             # There is a name clash somewhere, but it will be reported later
             pass
         local_imports[import_info.alias] = import_info.parsed
-        
+
         if isinstance(import_info.parsed, list):
             # It's a json abi, we don't need to recurse as it can import anything
             continue
@@ -98,14 +99,17 @@ def _extract_imports(module_ast: vy_ast.Module, imports: ImportDict) -> ImportDi
 
     return imports
 
-# Returns the (aliased!) names of modules whose method this method overrides 
+
+# Returns the (aliased!) names of modules whose method this method overrides
 # TODO: Check this handles correctly going through an import's import
 def _extract_overrides(func: vy_ast.FunctionDef) -> list[str]:
     return [
         decorator.args[0].id
         for decorator in func.decorator_list
-        if isinstance(decorator, vy_ast.Call) and decorator.func.id == "override"  # type: ignore[union-attr]
+        if isinstance(decorator, vy_ast.Call)
+        and decorator.func.id == "override"  # type: ignore[union-attr]
     ]
+
 
 def _is_abstract(func: vy_ast.FunctionDef) -> bool:
     return any(
@@ -113,28 +117,25 @@ def _is_abstract(func: vy_ast.FunctionDef) -> bool:
         for decorator in func.decorator_list
     )
 
+
 def _get_method(module_ast: vy_ast.Module, name: str) -> vy_ast.FunctionDef:
-    candidates = [
-        func
-        for func in module_ast.get_children(vy_ast.FunctionDef)
-        if func.name == name
-    ]
+    candidates = [func for func in module_ast.get_children(vy_ast.FunctionDef) if func.name == name]
     assert len(candidates) == 1
 
     return candidates[0]
+
 
 def _module_name_from_initializes_annot(annot: vy_ast.VyperNode) -> str:
     if isinstance(annot, vy_ast.Name):
         return annot.id
     elif isinstance(annot, vy_ast.Subscript):
         return _module_name_from_initializes_annot(annot.value)
-    assert False
+    raise AssertionError("unreachable")
 
 
 # Adds overridden_by metadata to abstract methods, and perform validity checks
 def _annotate_overrides(imports: ImportDict) -> None:
     for module_ast in imports:
-        
         # TODO: Handle cases other than annotation being a vy_ast.Name
         initialized_modules = [
             _module_name_from_initializes_annot(init_decl.annotation)
@@ -142,42 +143,40 @@ def _annotate_overrides(imports: ImportDict) -> None:
         ]
 
         for func in module_ast.get_children(vy_ast.FunctionDef):
-
             for other_module_name in _extract_overrides(func):
-
                 if other_module_name not in imports[module_ast]:
                     # Import error will be reported later
                     continue
 
                 other_module_ast = imports[module_ast][other_module_name]
-                
+
                 # Check that the overridden module is initialized
                 if other_module_name not in initialized_modules:
-                    raise FunctionDeclarationException(
-                        f"Cannot override method from `{other_module_name}` - module is not initialized",
-                        func,
-                        hint=f"add `initializes: {other_module_name}` as a top-level statement to your contract"
-                    )
+                    msg = f"Cannot override method from `{other_module_name}`"
+                    msg += " - module is not initialized"
+                    hint = f"add `initializes: {other_module_name}` "
+                    hint += "as a top-level statement to your contract"
+                    raise FunctionDeclarationException(msg, func, hint=hint)
 
                 other_func = _get_method(other_module_ast, func.name)
 
                 # Check that the overridden method is abstract
                 if not _is_abstract(other_func):
-                    raise FunctionDeclarationException(
-                        f"Cannot override `{func.name}` from `{other_module_name}` - method is not abstract",
-                        func,
-                        hint="only abstract methods can be overridden"
-                    )
+                    msg = f"Cannot override `{func.name}` from `{other_module_name}`"
+                    msg += " - method is not abstract"
+                    hint = "only abstract methods can be overridden"
+                    raise FunctionDeclarationException(msg, func, hint=hint)
 
                 # Check for duplicate overrides
                 if "overridden_by" in other_func._metadata:
                     raise FunctionDeclarationException(
                         f"Method `{func.name}` from `{other_module_name}` is already overridden",
                         func,
-                        hint="each abstract method can only be overridden once"
+                        hint="each abstract method can only be overridden once",
                     )
 
                 other_func._metadata["overridden_by"] = func
+
 
 def _analyze_module_r(module_ast: vy_ast.Module, is_interface: bool = False):
     if "type" in module_ast._metadata:
@@ -206,6 +205,7 @@ def _analyze_module_r(module_ast: vy_ast.Module, is_interface: bool = False):
             analyzer.validate_used_modules()
 
     return ret
+
 
 def _analyze_call_graph(module_ast: vy_ast.Module):
     # get list of internal function calls made by each function
@@ -913,7 +913,6 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
 
 
 def _modules_check_overrides(imports: ImportDict):
-    
     for module_ast in imports:
         for func in module_ast.get_children(vy_ast.FunctionDef):
             abstract_t = func._metadata["func_type"]
@@ -921,6 +920,7 @@ def _modules_check_overrides(imports: ImportDict):
                 override_t = abstract_t.overridden_by._metadata["func_type"]
 
                 override_t.override_discrepancies(abstract_t).raise_if_not_empty()
+
 
 # TODO: rewrite using fn_t.called_functions
 def _function_call_graph_with_overrides(func: vy_ast.FunctionDef):
@@ -936,9 +936,7 @@ def _function_call_graph_with_overrides(func: vy_ast.FunctionDef):
             # we just want to be able to construct the call graph.
             continue
 
-        if isinstance(call_t, ContractFunctionT) and (
-            call_t.is_internal or call_t.is_constructor
-        ):
+        if isinstance(call_t, ContractFunctionT) and (call_t.is_internal or call_t.is_constructor):
             # Makes sure a function is not abstract, by potentially following overrides
             def get_concrete_func_t(func_t: ContractFunctionT) -> ContractFunctionT:
                 if func_t.is_abstract:
@@ -961,13 +959,14 @@ def _modules_call_graph_with_overrides(imports: ImportDict):
 
 # compute reachable set and validate the call graph (detect cycles)
 # Should put functions in an order such that dependencies always come before dependents
-def _function_compute_reachable_set_with_overrides(fn_t: ContractFunctionT, path: list[ContractFunctionT] = None) -> None:
+def _function_compute_reachable_set_with_overrides(
+    fn_t: ContractFunctionT, path: list[ContractFunctionT] = None
+) -> None:
     path = path or []
 
     path.append(fn_t)
 
     for g in fn_t.called_functions_with_overrides:
-
         # The overrides have been resolved, there should be no abstract left
         assert not g.is_abstract
 
@@ -989,6 +988,7 @@ def _function_compute_reachable_set_with_overrides(fn_t: ContractFunctionT, path
         fn_t.reachable_internal_functions_with_overrides.add(g)
 
     path.pop()
+
 
 def _modules_compute_reachable_set_with_overrides(imports: ImportDict):
     for module_ast in imports:

@@ -519,7 +519,8 @@ def get_common_types(*nodes: vy_ast.VyperNode, filter_fn: Callable = None) -> Li
         tmp = []
         for c in common_types:
             for t in new_types:
-                # TODO: This can add either the supertype or the subtype to tmp depending on the order
+                # TODO: This can add either the supertype or the subtype
+                # to tmp depending on the order
                 if t.compare_type(c) or c.compare_type(t):
                     tmp.append(c)
                     break
