@@ -7,7 +7,6 @@ from vyper.codegen.ir_node import IRnode
 from vyper.evm.address_space import MEMORY
 from vyper.exceptions import StateAccessViolation
 from vyper.semantics.types.subscriptable import TupleT
-from vyper import ast as vy_ast
 
 
 def _align_kwargs(func_t, args_ir):
@@ -35,6 +34,7 @@ def ir_for_self_call(stmt_expr: vy_ast.Call, context):
     # - push jumpdest (callback ptr) and return buffer location
     # - jump to label
     # - (private function will fill return buffer and jump back)
+    assert isinstance(stmt_expr.func, vy_ast.Attribute)
     method_name = stmt_expr.func.attr
     func_t = stmt_expr.func._metadata["type"]
 
@@ -50,7 +50,7 @@ def ir_for_self_call(stmt_expr: vy_ast.Call, context):
     args_ir = pos_args_ir + default_vals_ir
     assert len(args_ir) == len(func_t.arguments)
 
-    args_tuple_t = TupleT([x.typ for x in args_ir])
+    args_tuple_t = TupleT(tuple(x.typ for x in args_ir))
     args_as_tuple = IRnode.from_list(["multi"] + [x for x in args_ir], typ=args_tuple_t)
 
     # CMC 2023-05-17 this seems like it is already caught in typechecker
@@ -123,7 +123,7 @@ def ir_for_self_call(stmt_expr: vy_ast.Call, context):
     # pass return label to subroutine
     goto_op.append(["symbol", return_label])
 
-    call_sequence = ["seq"]
+    call_sequence: list = ["seq"]
     call_sequence.append(eval_once_check(_freshname(stmt_expr.node_source_code)))
     call_sequence.extend([copy_args, goto_op, ["label", return_label, ["var_list"], "pass"]])
     if return_buffer is not None:
@@ -138,7 +138,7 @@ def ir_for_self_call(stmt_expr: vy_ast.Call, context):
         add_gas_estimate=func_t._ir_info.gas_estimate,
     )
     o.is_self_call = True
-    o.invoked_function_ir = func_t._ir_info.func_ir
+    o.invoked_function_ir = func_t._ir_info.func_ir  # type: ignore[attr-defined]
     o.passthrough_metadata["func_t"] = func_t
     o.passthrough_metadata["args_ir"] = args_ir
     return o

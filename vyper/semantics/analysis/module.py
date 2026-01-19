@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, TypeAlias
 
 from vyper import ast as vy_ast
 from vyper.evm.opcodes import version_check
@@ -66,7 +66,7 @@ def analyze_module(module_ast: vy_ast.Module) -> ModuleT:
     return ret
 
 # For each module, the module corresponding to each identifier
-type ImportDict = dict[vy_ast.Module, dict[str, vy_ast.Module]]
+ImportDict: TypeAlias = dict[vy_ast.Module, dict[str, vy_ast.Module]]
 
 def _extract_imports(module_ast: vy_ast.Module, imports: ImportDict) -> ImportDict:
 
@@ -104,7 +104,7 @@ def _extract_overrides(func: vy_ast.FunctionDef) -> list[str]:
     return [
         decorator.args[0].id
         for decorator in func.decorator_list
-        if isinstance(decorator, vy_ast.Call) and decorator.func.id == "override"
+        if isinstance(decorator, vy_ast.Call) and decorator.func.id == "override"  # type: ignore[union-attr]
     ]
 
 def _is_abstract(func: vy_ast.FunctionDef) -> bool:
@@ -942,6 +942,7 @@ def _function_call_graph_with_overrides(func: vy_ast.FunctionDef):
             # Makes sure a function is not abstract, by potentially following overrides
             def get_concrete_func_t(func_t: ContractFunctionT) -> ContractFunctionT:
                 if func_t.is_abstract:
+                    assert func_t.overridden_by is not None
                     override_t = func_t.overridden_by._metadata["func_type"]
                     return get_concrete_func_t(override_t)
                 else:

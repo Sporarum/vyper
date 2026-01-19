@@ -938,6 +938,8 @@ class ExprVisitor(VyperNodeVisitorBase):
                         
                         if override_module_t not in initialized_modules:
                             override_alias = current_module_t.find_module_info(override_module_t).alias
+                            assert isinstance(node.func, vy_ast.Attribute)
+                            assert isinstance(node.func.value, vy_ast.Name)
                             abstract_module = node.func.value.id
                             
                             msg = f"Cannot call `{func_type.name}` from `{abstract_module}` - it is overridden in `{override_alias}` which accesses state, but `{override_alias}` is not initialized"

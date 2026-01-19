@@ -58,7 +58,7 @@ class PositionalArg(_FunctionArg):
 
 @dataclass(kw_only=True)
 class KeywordArg(_FunctionArg):
-    default_value: vy_ast.VyperNode
+    default_value: vy_ast.Ellipsis | vy_ast.Constant
 
 
 # TODO: refactor this into FunctionT (from an ast) and ABIFunctionT (from json)
@@ -690,9 +690,14 @@ class ContractFunctionT(VyperType):
                 if isinstance(p_abstract, KeywordArg):
                     if not isinstance(p_override, KeywordArg):
                         return False
+
                     if isinstance(p_abstract.default_value, vy_ast.Ellipsis):
                         return True
-                    
+
+                    # overrides can themselves be abstract, so this is possible
+                    if isinstance(p_abstract.default_value, vy_ast.Ellipsis):
+                        return False
+
                     return p_abstract.default_value.value == p_override.default_value.value
                 else:
                     return True
