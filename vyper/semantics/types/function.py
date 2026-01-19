@@ -479,14 +479,7 @@ class ContractFunctionT(VyperType):
 
         overridden_by = funcdef._metadata["overridden_by"] if is_abstract else None
 
-        positional_args, keyword_args = _parse_args(funcdef)
-
-        # Abstract methods cannot have optional parameters
-        if is_abstract and funcdef.args.defaults:
-            raise FunctionDeclarationException(
-                "Abstract methods cannot have optional parameters",
-                funcdef.args.defaults[0]
-            )
+        positional_args, keyword_args = _parse_args(funcdef, is_abstract=is_abstract)
 
         return_type = _parse_return_type(funcdef)
 
@@ -693,13 +686,25 @@ class ContractFunctionT(VyperType):
                         hint = "Remove the extra parameter, or add a default value",
                     )
 
-            if p_override.name == p_abstract.name and p_override.typ.is_supertype_of(p_abstract.typ):
+            def default_values_match() -> bool:
+                if isinstance(p_abstract, KeywordArg):
+                    if not isinstance(p_override, KeywordArg):
+                        return False
+                    if isinstance(p_abstract.default_value, vy_ast.Ellipsis):
+                        return True
+                    
+                    return p_abstract.default_value.value == p_override.default_value.value
+                else:
+                    return True
+
+
+            if p_override.name == p_abstract.name and p_override.typ.is_supertype_of(p_abstract.typ) and default_values_match():
                 return None
             else:
                 return FunctionDeclarationException(
                     "Override parameter mismatch: "
                     f"Got {pretty_param(p_override)}, "
-                    f"but expected {pretty_param(p_abstract)} (or a supertype)",
+                    f"but expected {pretty_param(p_abstract)} (or stricter)",
                     p_override.ast_source, p_abstract.ast_source,
                 )
 
@@ -1142,7 +1147,7 @@ def _parse_decorators(funcdef: vy_ast.FunctionDef) -> _ParsedDecorators:
 
 
 def _parse_args(
-    funcdef: vy_ast.FunctionDef, is_interface: bool = False
+    funcdef: vy_ast.FunctionDef, is_interface: bool = False, is_abstract: bool = False
 ) -> tuple[list[PositionalArg], list[KeywordArg]]:
     argnames = set()  # for checking uniqueness
     n_total_args = len(funcdef.args.args)
@@ -1182,7 +1187,7 @@ def _parse_args(
             if not check_modifiability(value, Modifiability.RUNTIME_CONSTANT):
                 raise StateAccessViolation("Value must be literal or environment variable", value)
             
-            skip_type_check: bool = is_interface and isinstance(value, vy_ast.Ellipsis)
+            skip_type_check: bool = (is_interface or is_abstract) and isinstance(value, vy_ast.Ellipsis)
             if not skip_type_check:
                 validate_expected_type(value, type_)
             keyword_args.append(KeywordArg(argname, type_, ast_source=arg, default_value=value))
