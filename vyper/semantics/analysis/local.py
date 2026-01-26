@@ -950,10 +950,10 @@ class ExprVisitor(VyperNodeVisitorBase):
                             abstract_module = node.func.value.id
 
                             msg = f"Cannot call `{func_type.name}` from `{abstract_module}`"
-                            f" - it is overridden in {override_alias}` which accesses state, "
-                            f"but `{override_alias}` is not initialized"
+                            msg += f" - it is overridden in `{override_alias}` which accesses state"
+                            msg += f", but `{override_alias}` is not initialized"
                             hint = f"add `initializes: {override_alias}` "
-                            "as a top-level statement to your contract"
+                            hint += "as a top-level statement to your contract"
                             raise InitializerException(msg, node.func, hint=hint)
 
                 if func_type.is_deploy and not self.func.is_deploy:
