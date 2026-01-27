@@ -1,8 +1,8 @@
 # CMC 2024-02-03 TODO: rename me to function.py
 
 import contextlib
-from typing import Optional
 import textwrap
+from typing import Optional
 
 from vyper import ast as vy_ast
 from vyper.ast.validation import validate_call_args
@@ -397,16 +397,16 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
         for node in self.fn_node.body:
             self.visit(node)
 
-
         terminating_node = find_terminating_node(self.fn_node.body)
 
         if self.func.is_abstract:
-            
             # The doc string (if present) will be parsed differently,
             # and so not be present in self.fn_node.body
-            valid_body = terminating_node is None and \
-                len(self.fn_node.body) == 1 and \
-                isinstance(self.fn_node.body[0].value, vy_ast.Ellipsis)
+            valid_body = (
+                terminating_node is None
+                and len(self.fn_node.body) == 1
+                and isinstance(self.fn_node.body[0].value, vy_ast.Ellipsis)
+            )
 
             if not valid_body:
                 func_name = self.func.name
@@ -415,17 +415,18 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
                 msg += " (can be preceded by a doc comment)"
 
                 hint = "If you want to provide a default implementation, write a function like"
-                hint += f"{func_name}_default, and instruct your users to override your function as:"
-                hint += textwrap.dedent(f"""
+                hint += (
+                    f"{func_name}_default, and instruct your users to override your function as:"
+                )
+                hint += textwrap.dedent(
+                    f"""
                     ```
                     @override(my_module)
                     def {func_name}(<function parameters here>) -> {self.func.return_type}:
                         return {func_name}_default(<function arguments here>)
-                    ```""")
-                raise FunctionDeclarationException(msg,
-                    self.fn_node,
-                    hint=hint
+                    ```"""
                 )
+                raise FunctionDeclarationException(msg, self.fn_node, hint=hint)
 
         elif self.func.return_type:
             if not terminating_node:
