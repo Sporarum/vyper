@@ -94,7 +94,7 @@ def _analyze_function_r(
 
     try:
         with namespace.enter_scope():
-            analyzer = FunctionAnalyzer(vy_module, node, namespace)
+            analyzer = FunctionAnalyzer(node, namespace)
             analyzer.analyze()
     except VyperException as e:
         err_list.append(e)
@@ -292,10 +292,7 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
     ignored_types = (vy_ast.Pass,)
     scope_name = "function"
 
-    def __init__(
-        self, vyper_module: vy_ast.Module, fn_node: vy_ast.FunctionDef, namespace: dict
-    ) -> None:
-        self.vyper_module = vyper_module
+    def __init__(self, fn_node: vy_ast.FunctionDef, namespace: dict) -> None:
         self.fn_node = fn_node
         self.namespace = namespace
         self.func = fn_node._metadata["func_type"]
