@@ -40,7 +40,6 @@ from vyper.semantics.analysis.utils import (
 )
 from vyper.semantics.data_locations import DataLocation
 from vyper.semantics.environment import CONSTANT_ENVIRONMENT_VARS
-from vyper.semantics.namespace import get_namespace
 from vyper.semantics.types import (
     TYPE_T,
     VOID_TYPE,
@@ -89,6 +88,8 @@ def _analyze_function_r(
         if isinstance(call_t, ContractFunctionT):
             assert isinstance(call_t.ast_def, vy_ast.FunctionDef)  # help mypy
             _analyze_function_r(vy_module, call_t.ast_def, err_list)
+
+    from vyper.semantics.namespace import get_namespace
 
     namespace = get_namespace()
 
