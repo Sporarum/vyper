@@ -29,7 +29,7 @@ from vyper.semantics.analysis.base import (
     VarAccess,
     VarInfo,
 )
-from vyper.semantics.analysis.common import VyperNodeVisitorBase, NodeAccumulator
+from vyper.semantics.analysis.common import NodeAccumulator, VyperNodeVisitorBase
 from vyper.semantics.analysis.utils import (
     get_common_types,
     get_exact_type_from_node,

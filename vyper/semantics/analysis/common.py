@@ -1,6 +1,5 @@
-from typing import Tuple, Generic, TypeVar
+from typing import Generic, Tuple, TypeVar
 
-import vyper.ast as vy_ast
 from vyper.exceptions import StructureException, tag_exceptions
 
 
