@@ -64,6 +64,13 @@ from vyper.semantics.types.function import ContractFunctionT, MemberFunctionT, S
 from vyper.semantics.types.utils import type_from_annotation
 
 
+# Ugly fix to avoid circular import issues
+def get_namespace():
+    from vyper.semantics.namespace import get_namespace as _get_ns
+
+    return _get_ns()
+
+
 def analyze_functions(vy_module: vy_ast.Module) -> None:
     """Analyzes a vyper ast and validates the function bodies"""
     err_list = ExceptionList()
@@ -88,8 +95,6 @@ def _analyze_function_r(
         if isinstance(call_t, ContractFunctionT):
             assert isinstance(call_t.ast_def, vy_ast.FunctionDef)  # help mypy
             _analyze_function_r(vy_module, call_t.ast_def, err_list)
-
-    from vyper.semantics.namespace import get_namespace
 
     namespace_builder = get_namespace()
 
@@ -381,11 +386,6 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
 
         self.loop_variables: list[VarAccess] = []
 
-        # Ugly hack to avoid circular import issues
-        from vyper.semantics.namespace import get_namespace
-
-        self._get_namespace = get_namespace
-
     def analyze(self):
         if self.func.analysed:
             return
@@ -401,7 +401,7 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
             location, modifiability = (DataLocation.CALLDATA, Modifiability.RUNTIME_CONSTANT)
 
         for arg in self.func.arguments:
-            self._get_namespace()[arg.name] = VarInfo(
+            get_namespace()[arg.name] = VarInfo(
                 arg.typ, location=location, modifiability=modifiability, decl_node=arg.ast_source
             )
 
@@ -450,7 +450,7 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
         # validate the value before adding it to the namespace
         self.expr_visitor.visit(node.value, typ)
 
-        self._get_namespace()[name] = VarInfo(typ, location=DataLocation.MEMORY, decl_node=node)
+        get_namespace()[name] = VarInfo(typ, location=DataLocation.MEMORY, decl_node=node)
 
         self.expr_visitor.visit(node.target, typ)
 
@@ -664,10 +664,10 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
             # note: using `node.target` here results in bad source location.
             iter_var = self._analyse_list_iter(node.target.target, node.iter, target_type)
 
-        with self._get_namespace().enter_scope(), self.enter_for_loop(iter_var):
+        with get_namespace().enter_scope(), self.enter_for_loop(iter_var):
             target_name = node.target.target.id
             # maybe we should introduce a new Modifiability: LOOP_VARIABLE
-            self._get_namespace()[target_name] = VarInfo(
+            get_namespace()[target_name] = VarInfo(
                 target_type, modifiability=Modifiability.RUNTIME_CONSTANT, decl_node=node.target
             )
 
@@ -678,10 +678,10 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
 
     def visit_If(self, node):
         self.expr_visitor.visit(node.test, BoolT())
-        with self._get_namespace().enter_scope():
+        with get_namespace().enter_scope():
             for n in node.body:
                 self.visit(n)
-        with self._get_namespace().enter_scope():
+        with get_namespace().enter_scope():
             for n in node.orelse:
                 self.visit(n)
 
