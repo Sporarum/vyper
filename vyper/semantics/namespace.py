@@ -40,6 +40,7 @@ class Namespace(dict):
     def __reduce__(self):
         return (Namespace, (dict(self),))
 
+
 """
 Namespace which surrounds anything, every namespace should be a superset of this one
 """

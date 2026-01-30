@@ -383,6 +383,7 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
 
         # Ugly hack to avoid circular import issues
         from vyper.semantics.namespace import get_namespace
+
         self._get_namespace = get_namespace
 
     def analyze(self):

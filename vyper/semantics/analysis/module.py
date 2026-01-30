@@ -759,7 +759,11 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
 
     def _load_import(self, import_info: ImportInfo) -> Any:
         path = import_info.compiler_input.path
-        from vyper.semantics.namespace import NamespaceBuilder, override_global_namespace, base_namespace
+        from vyper.semantics.namespace import (
+            NamespaceBuilder,
+            base_namespace,
+            override_global_namespace,
+        )
 
         if path.suffix == ".vy":
             module_ast = import_info.parsed
