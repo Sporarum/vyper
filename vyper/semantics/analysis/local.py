@@ -65,10 +65,10 @@ from vyper.semantics.types.utils import type_from_annotation
 
 
 # Ugly fix to avoid circular import issues
-def get_namespace():
-    from vyper.semantics.namespace import get_namespace as _get_ns
+def get_namespace_builder():
+    from vyper.semantics.namespace import namespace_builder_context
 
-    return _get_ns()
+    return namespace_builder_context.get()
 
 
 def analyze_functions(vy_module: vy_ast.Module) -> None:
@@ -96,10 +96,10 @@ def _analyze_function_r(
             assert isinstance(call_t.ast_def, vy_ast.FunctionDef)  # help mypy
             _analyze_function_r(vy_module, call_t.ast_def, err_list)
 
-    namespace_builder = get_namespace()
+    import vyper.semantics.namespace as namespace
 
     try:
-        with namespace_builder.enter_scope():
+        with namespace.sub_scope():
             analyzer = FunctionAnalyzer(vy_module, node)
             analyzer.analyze()
     except VyperException as e:
@@ -320,7 +320,7 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
             location, modifiability = (DataLocation.CALLDATA, Modifiability.RUNTIME_CONSTANT)
 
         for arg in self.func.arguments:
-            get_namespace()[arg.name] = VarInfo(
+            get_namespace_builder()[arg.name] = VarInfo(
                 arg.typ, location=location, modifiability=modifiability, decl_node=arg.ast_source
             )
 
@@ -367,7 +367,7 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
         # validate the value before adding it to the namespace
         self.expr_visitor.visit(node.value, typ)
 
-        get_namespace()[name] = VarInfo(typ, location=DataLocation.MEMORY, decl_node=node)
+        get_namespace_builder()[name] = VarInfo(typ, location=DataLocation.MEMORY, decl_node=node)
 
         self.expr_visitor.visit(node.target, typ)
 
@@ -581,10 +581,13 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
             # note: using `node.target` here results in bad source location.
             iter_var = self._analyse_list_iter(node.target.target, node.iter, target_type)
 
-        with get_namespace().enter_scope(), self.enter_for_loop(iter_var):
+        # Avoid circular dependency issues
+        import vyper.semantics.namespace as namespace
+
+        with namespace.sub_scope(), self.enter_for_loop(iter_var):
             target_name = node.target.target.id
             # maybe we should introduce a new Modifiability: LOOP_VARIABLE
-            get_namespace()[target_name] = VarInfo(
+            get_namespace_builder()[target_name] = VarInfo(
                 target_type, modifiability=Modifiability.RUNTIME_CONSTANT, decl_node=node.target
             )
 
@@ -594,11 +597,14 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
                 self.visit(stmt)
 
     def visit_If(self, node):
+        # Avoid circular dependency issues
+        import vyper.semantics.namespace as namespace
+
         self.expr_visitor.visit(node.test, BoolT())
-        with get_namespace().enter_scope():
+        with namespace.sub_scope():
             for n in node.body:
                 self.visit(n)
-        with get_namespace().enter_scope():
+        with namespace.sub_scope():
             for n in node.orelse:
                 self.visit(n)
 
