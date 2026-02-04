@@ -15,7 +15,7 @@ class Namespace(dict):
     Immutable namespace object representing a contract's resolved names.
     Produced by NamespaceBuilder after analysis is complete.
 
-    Map from str to 
+    Map from str to
       VarInfo         - variable/builtin function bindings
       VyperType       - type instances (e.g. BoolT(), AddressT(), StructT, EventT, FlagT)
       type[VyperType] - type classes used as constructors (e.g. BytesT, StringT, DArrayT)
