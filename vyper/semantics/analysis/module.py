@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Optional
 
 from vyper import ast as vy_ast
 from vyper.evm.opcodes import version_check
