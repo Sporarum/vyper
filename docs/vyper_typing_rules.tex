@@ -21,7 +21,6 @@
 \newcommand{\validdarray}[1]{\mathsf{ValidDArray}(#1)}
 \newcommand{\validkey}[1]{\mathsf{ValidKey}(#1)}
 \newcommand{\convertible}[2]{\mathsf{Convertible}(#1, #2)}
-\newcommand{\islit}[1]{\mathsf{Literal}(#1)}
 
 \begin{document}
 
@@ -94,11 +93,15 @@ We define the following type classes used throughout this document:
 \ell ::= \kw{storage} \mid \kw{transient} \mid \kw{memory} \mid \kw{calldata} \mid \kw{code}
 \]
 
-\subsection{Modifiability (for variables)}
+\subsection{Modifiability}
 
 \[
 \mu ::= \kw{constant} < \kw{runtime\_constant} < \kw{modifiable}
 \]
+
+For an expression $e$, we write $\mu(e)$ for its modifiability. Literals have $\mu = \kw{constant}$.
+Compound expressions inherit modifiability from their subexpressions (e.g., operations on
+constants yield constants). Constant folding reduces constant expressions to literals at compile time.
 
 \subsection{State Mutability (for functions)}
 
@@ -400,19 +403,20 @@ Environment variables are accessible when $m \neq \kw{pure}$:
 
 \subsection{Exponentiation}
 
-Exponentiation requires at least one operand to be a \emph{literal} (an integer constant
-in the AST, not merely a compile-time constant expression). This enables static bounds checking:
+Exponentiation requires at least one operand to be compile-time constant.
+This enables static bounds checking:
 
 \begin{mathpar}
 \inferrule*[right=T-Pow]
   {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\
-   \tau \in \mathit{IntegerT} \\ \islit{e_1} \lor \islit{e_2}}
+   \tau \in \mathit{IntegerT} \\ \mu(e_1) = \kw{constant} \lor \mu(e_2) = \kw{constant}}
   {\Gamma; m \vdash e_1\ \kw{**}\ e_2 : \tau}
 \end{mathpar}
 
-where $\islit{e}$ holds iff $e$ is a literal integer in the AST. Note that $\kw{1 + 1}$
-is \emph{not} a literal, even though it is compile-time constant. The rule ensures
-the compiler can statically verify that the result does not overflow.
+For example, both \kw{x ** 2} and \kw{x ** (1 + 1)} are valid because \kw{2} and
+\kw{1 + 1} (which folds to \kw{2}) are compile-time constants. However, \kw{x ** y}
+where \kw{y} is a runtime variable is rejected. The rule ensures the compiler can
+statically verify that the result does not overflow.
 
 \subsection{Bitwise Operations}
 
@@ -487,7 +491,7 @@ Shifts are only allowed on 256-bit types:
   {\Gamma; m \vdash h[k] : \tau}
 
 \inferrule*[right=T-TupleIdx]
-  {\Gamma; m \vdash t : (\tau_0, \ldots, \tau_{n-1}) \\ 0 \leq i < n \\ \islit{i}}
+  {\Gamma; m \vdash t : (\tau_0, \ldots, \tau_{n-1}) \\ 0 \leq i < n \\ \mu(i) = \kw{constant}}
   {\Gamma; m \vdash t[i] : \tau_i}
 \end{mathpar}
 
