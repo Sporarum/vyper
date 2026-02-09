@@ -209,7 +209,7 @@ The predicate $\validelem{\tau}$ determines if $\tau$ can be an element of a sta
 
 \begin{mathpar}
 \inferrule*[right=VE-Prim]
-  {\tau \in \{\kw{bool}, \kw{address}\} \cup \mathit{IntegerT} \cup \{\kw{bytes}M\}}
+  {\tau \in \{\kw{bool}, \kw{address}, \kw{decimal}\} \cup \mathit{IntegerT} \cup \{\kw{bytes}M\}}
   {\validelem{\tau}}
 
 \inferrule*[right=VE-Struct]
@@ -230,7 +230,7 @@ The predicate $\validelem{\tau}$ determines if $\tau$ can be an element of a sta
 \end{mathpar}
 
 The following types are \textbf{not} valid static array elements:
-$\kw{decimal}$, $\kw{Bytes}[n]$, $\kw{String}[n]$, $\kw{flag}$, $\kw{HashMap}$, $\kw{event}$.
+$\kw{Bytes}[n]$, $\kw{String}[n]$, $\kw{flag}$, $\kw{HashMap}$, $\kw{event}$, tuple.
 
 \subsection{Valid Dynamic Array Element Types}
 
@@ -255,7 +255,7 @@ The predicate $\validdarray{\tau}$ determines if $\tau$ can be an element of a d
 \end{mathpar}
 
 The following types are \textbf{not} valid dynamic array elements:
-$\kw{decimal}$, $\kw{HashMap}$, $\kw{event}$.
+$\kw{HashMap}$, $\kw{event}$, tuple.
 
 \subsection{Valid HashMap Key Types}
 
@@ -263,7 +263,7 @@ The predicate $\validkey{\kappa}$ determines if $\kappa$ can be a HashMap key:
 
 \begin{mathpar}
 \inferrule*[right=VK-Prim]
-  {\kappa \in \{\kw{bool}, \kw{address}\} \cup \mathit{IntegerT} \cup \{\kw{bytes}M\}}
+  {\kappa \in \{\kw{bool}, \kw{address}, \kw{decimal}\} \cup \mathit{IntegerT} \cup \{\kw{bytes}M\}}
   {\validkey{\kappa}}
 
 \inferrule*[right=VK-Bytes]
@@ -277,10 +277,14 @@ The predicate $\validkey{\kappa}$ determines if $\kappa$ can be a HashMap key:
 \inferrule*[right=VK-Flag]
   { }
   {\validkey{\kw{flag}\ F}}
+
+\inferrule*[right=VK-Interface]
+  { }
+  {\validkey{\kw{interface}\ I}}
 \end{mathpar}
 
 The following types are \textbf{not} valid HashMap keys:
-$\kw{decimal}$, $\kw{struct}$, $\tau[n]$, $\kw{DynArray}$, $\kw{HashMap}$, $\kw{event}$, $\kw{interface}$.
+$\kw{struct}$, $\tau[n]$, $\kw{DynArray}$, $\kw{HashMap}$, $\kw{event}$, tuple.
 
 %==============================================================================
 \section{Expression Typing Rules}
@@ -423,7 +427,7 @@ statically verify that the result does not overflow.
 \begin{mathpar}
 \inferrule*[right=T-BitBin]
   {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\
-   \tau \in \{\kw{uint}N, \kw{bytes}M, \kw{flag}\ F\} \\ \odot \in \{\&, |, \wedge\}}
+   \tau \in \mathit{IntegerT} \cup \{\kw{bytes}M, \kw{flag}\ F\} \\ \odot \in \{\&, |, \wedge\}}
   {\Gamma; m \vdash e_1\ \odot\ e_2 : \tau}
 
 \inferrule*[right=T-BitNot]
@@ -479,7 +483,8 @@ Shifts are only allowed on 256-bit types:
 
 \begin{mathpar}
 \inferrule*[right=T-SArrayIdx]
-  {\Gamma; m \vdash e : \tau[n] \\ \Gamma; m \vdash i : \tau_i \\ \tau_i \in \mathit{IntegerT} \\ 0 \leq i < n}
+  {\Gamma; m \vdash e : \tau[n] \\ \Gamma; m \vdash i : \tau_i \\ \tau_i \in \mathit{IntegerT} \\
+   \mu(i) = \kw{constant} \Rightarrow 0 \leq i < n}
   {\Gamma; m \vdash e[i] : \tau}
 
 \inferrule*[right=T-DArrayIdx]
@@ -607,7 +612,7 @@ External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
 \inferrule*[right=T-StaticCall]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
    (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
-   m_f \in \{\kw{view}, \kw{pure}\} \\
+   m_f \in \{\kw{view}, \kw{pure}\} \\ m_f \leq m \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i}
   {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) : \tau_r}
 \end{mathpar}
@@ -645,6 +650,21 @@ When $\Gamma' = \Gamma$ (the statement does not extend the context), we abbrevia
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
   {\Gamma; m \vdash x\ \oplus\!\!= \ e}
+
+\inferrule*[right=T-AugAssignBit]
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau \\
+   \tau \in \mathit{IntegerT} \cup \{\kw{bytes}M, \kw{flag}\ F\} \\
+   \odot \in \{\&, |, \wedge\} \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash x\ \odot\!\!= \ e}
+
+\inferrule*[right=T-AugAssignShift]
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau' \\ \tau' \in \mathit{IntegerT} \\
+   \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\} \\ \diamond \in \{\ll, \gg\} \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash x\ \diamond\!\!= \ e}
 \end{mathpar}
 
 \subsection{Control Flow}
@@ -744,18 +764,34 @@ The predicate $\convertible{\tau_1}{\tau_2}$ defines valid explicit conversions:
 \inferrule*[right=Conv-DecInt]
   {\tau \in \mathit{IntegerT}}
   {\convertible{\kw{decimal}}{\tau}}
+
+\inferrule*[right=Conv-BoolInt]
+  {\tau \in \mathit{IntegerT}}
+  {\convertible{\kw{bool}}{\tau}}
+
+\inferrule*[right=Conv-BoolDec]
+  { }
+  {\convertible{\kw{bool}}{\kw{decimal}}}
 \end{mathpar}
 
 \subsection{Byte Conversions}
 
 \begin{mathpar}
-\inferrule*[right=Conv-BytesInt]
+\inferrule*[right=Conv-BytesMInt]
   { }
   {\convertible{\kw{bytes}M}{\kw{int}N} \land \convertible{\kw{bytes}M}{\kw{uint}N}}
 
-\inferrule*[right=Conv-IntBytes]
+\inferrule*[right=Conv-IntBytesM]
   { }
   {\convertible{\kw{int}N}{\kw{bytes}M} \land \convertible{\kw{uint}N}{\kw{bytes}M}}
+
+\inferrule*[right=Conv-BytesNInt]
+  {\tau \in \mathit{IntegerT}}
+  {\convertible{\kw{Bytes}[n]}{\tau}}
+
+\inferrule*[right=Conv-BytesNDec]
+  { }
+  {\convertible{\kw{Bytes}[n]}{\kw{decimal}}}
 \end{mathpar}
 
 \subsection{Address Conversions}
@@ -774,7 +810,7 @@ The predicate $\convertible{\tau_1}{\tau_2}$ defines valid explicit conversions:
 
 \begin{mathpar}
 \inferrule*[right=Conv-ToBool]
-  {\tau \in \mathit{IntegerT} \cup \{\kw{decimal}, \kw{bytes}M, \kw{address}\}}
+  {\tau \in \mathit{IntegerT} \cup \{\kw{decimal}, \kw{bytes}M, \kw{address}, \kw{Bytes}[n], \kw{String}[n]\}}
   {\convertible{\tau}{\kw{bool}}}
 \end{mathpar}
 
