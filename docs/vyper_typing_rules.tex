@@ -15,10 +15,11 @@
 
 \newcommand{\kw}[1]{\texttt{#1}}
 \newcommand{\typerule}[1]{\textsc{#1}}
-\newcommand{\judge}[3]{#1 \vdash #2 : #3}
-\newcommand{\judgem}[4]{#1 \vdash_{#2} #3 : #4}
-\newcommand{\stmt}[4]{#1; #2 \vdash #3 \dashv #4}
 \newcommand{\subtype}[2]{#1 <: #2}
+\newcommand{\validelem}[1]{\mathsf{ValidElem}(#1)}
+\newcommand{\validdarray}[1]{\mathsf{ValidDArray}(#1)}
+\newcommand{\validkey}[1]{\mathsf{ValidKey}(#1)}
+\newcommand{\convertible}[2]{\mathsf{Convertible}(#1, #2)}
 
 \begin{document}
 
@@ -27,8 +28,9 @@
 \begin{abstract}
 This document presents the formal typing rules for the Vyper smart contract programming language,
 extracted from the compiler implementation. Vyper is a statically typed, Pythonic language
-targeting the Ethereum Virtual Machine (EVM). These rules follow standard academic notation
-for type systems.
+targeting the Ethereum Virtual Machine (EVM). These rules follow standard notation from
+Pierce's \emph{Types and Programming Languages}~\cite{pierce2002types} and effect system
+literature~\cite{nielson1999type}.
 \end{abstract}
 
 \tableofcontents
@@ -41,30 +43,31 @@ for type systems.
 \subsection{Base Types}
 
 \begin{align*}
-\tau ::= \quad & \kw{bool} & \text{Boolean} \\
-\mid \quad & \kw{int}N \quad (N \in \{8,16,\ldots,256\}) & \text{Signed integer} \\
-\mid \quad & \kw{uint}N \quad (N \in \{8,16,\ldots,256\}) & \text{Unsigned integer} \\
-\mid \quad & \kw{decimal} & \text{Fixed-point decimal (168 bits)} \\
-\mid \quad & \kw{address} & \text{Ethereum address (160 bits)} \\
-\mid \quad & \kw{bytes}M \quad (M \in \{1,\ldots,32\}) & \text{Fixed-size byte array} \\
-\mid \quad & \kw{Bytes}[n] & \text{Dynamic byte array (max length $n$)} \\
-\mid \quad & \kw{String}[n] & \text{Dynamic string (max length $n$)}
+\tau ::= \quad & \kw{bool} && \text{Boolean} \\
+\mid \quad & \kw{int}N && \text{Signed integer } (N \in \{8,16,\ldots,256\}) \\
+\mid \quad & \kw{uint}N && \text{Unsigned integer } (N \in \{8,16,\ldots,256\}) \\
+\mid \quad & \kw{decimal} && \text{Fixed-point decimal (168 bits, 10 decimals)} \\
+\mid \quad & \kw{address} && \text{Ethereum address (160 bits)} \\
+\mid \quad & \kw{bytes}M && \text{Fixed-size byte array } (M \in \{1,\ldots,32\}) \\
+\mid \quad & \kw{Bytes}[n] && \text{Dynamic byte array (max length } n \text{)} \\
+\mid \quad & \kw{String}[n] && \text{Dynamic string (max length } n \text{)}
 \end{align*}
 
 \subsection{Composite Types}
 
 \begin{align*}
-\tau ::= \quad & \tau[n] & \text{Static array of length } n \\
-\mid \quad & \kw{DynArray}[\tau, n] & \text{Dynamic array (max length } n \text{)} \\
-\mid \quad & \kw{HashMap}[\kappa, \tau] & \text{Mapping from } \kappa \text{ to } \tau \\
-\mid \quad & (\tau_1, \ldots, \tau_n) & \text{Tuple} \\
-\mid \quad & \kw{struct}\ S & \text{User-defined struct} \\
-\mid \quad & \kw{flag}\ F & \text{User-defined flag (enum)} \\
-\mid \quad & \kw{event}\ E & \text{User-defined event}
+\tau ::= \quad & \tau[n] && \text{Static array of length } n \\
+\mid \quad & \kw{DynArray}[\tau, n] && \text{Dynamic array (max length } n \text{)} \\
+\mid \quad & \kw{HashMap}[\kappa, \tau] && \text{Mapping from } \kappa \text{ to } \tau \\
+\mid \quad & (\tau_1, \ldots, \tau_n) && \text{Tuple} \\
+\mid \quad & \kw{struct}\ S && \text{User-defined struct} \\
+\mid \quad & \kw{flag}\ F && \text{User-defined flag (enum)} \\
+\mid \quad & \kw{event}\ E && \text{User-defined event} \\
+\mid \quad & \kw{interface}\ I && \text{Interface type}
 \end{align*}
 
 %==============================================================================
-\section{Typing Contexts}
+\section{Typing Contexts and Judgments}
 %==============================================================================
 
 \subsection{Type Environment}
@@ -79,19 +82,32 @@ for type systems.
 \ell ::= \kw{storage} \mid \kw{transient} \mid \kw{memory} \mid \kw{calldata} \mid \kw{code}
 \]
 
-\subsection{Modifiability (for expressions and variables)}
+\subsection{Modifiability (for variables)}
 
 \[
-\mu ::= \kw{constant} \mid \kw{runtime\_constant} \mid \kw{modifiable}
+\mu ::= \kw{constant} < \kw{runtime\_constant} < \kw{modifiable}
 \]
 
 \subsection{State Mutability (for functions)}
 
 \[
-m ::= \kw{pure} \mid \kw{view} \mid \kw{nonpayable} \mid \kw{payable}
+m ::= \kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}
 \]
 
-With ordering: $\kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}$
+\subsection{Judgment Forms}
+
+We use the following judgment forms, following standard conventions~\cite{pierce2002types}:
+
+\begin{center}
+\begin{tabular}{ll}
+$\Gamma; m \vdash e : \tau$ & Expression $e$ has type $\tau$ in context $\Gamma$ under mutability $m$ \\
+$\Gamma; m \vdash s \Rightarrow \Gamma'$ & Statement $s$ transforms $\Gamma$ to $\Gamma'$ under mutability $m$ \\
+$\subtype{\tau_1}{\tau_2}$ & Type $\tau_1$ is a subtype of $\tau_2$ \\
+\end{tabular}
+\end{center}
+
+The notation $\Gamma; m \vdash \cdot$ threads the function mutability $m$ through all judgments,
+enabling uniform enforcement of state access constraints.
 
 %==============================================================================
 \section{Subtyping Rules}
@@ -113,25 +129,44 @@ With ordering: $\kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}$
 
 \subsection{Numeric Types (No Implicit Coercion)}
 
+Vyper requires exact type matching for numeric types---there are no implicit widening conversions.
+
 \begin{mathpar}
 \inferrule*[right=S-Int]
-  {N_1 = N_2 \\ s_1 = s_2}
-  {\subtype{\kw{int}^{s_1}_{N_1}}{\kw{int}^{s_2}_{N_2}}}
+  { }
+  {\subtype{\kw{int}N}{\kw{int}N}}
+
+\inferrule*[right=S-Uint]
+  { }
+  {\subtype{\kw{uint}N}{\kw{uint}N}}
+
+\inferrule*[right=S-Decimal]
+  { }
+  {\subtype{\kw{decimal}}{\kw{decimal}}}
 \end{mathpar}
 
 \subsection{Array Subtyping}
 
+Static arrays are \emph{invariant} in both element type and length:
+
 \begin{mathpar}
 \inferrule*[right=S-SArray]
-  {\subtype{\tau_1}{\tau_2} \\ \subtype{\tau_2}{\tau_1} \\ n_1 = n_2}
+  {\tau_1 = \tau_2 \\ n_1 = n_2}
   {\subtype{\tau_1[n_1]}{\tau_2[n_2]}}
+\end{mathpar}
 
+Dynamic arrays are \emph{covariant} in element type and \emph{contravariant} in max length
+(a smaller-capacity array can be used where a larger one is expected):
+
+\begin{mathpar}
 \inferrule*[right=S-DynArray]
   {\subtype{\tau_1}{\tau_2} \\ n_1 \leq n_2}
   {\subtype{\kw{DynArray}[\tau_1, n_1]}{\kw{DynArray}[\tau_2, n_2]}}
 \end{mathpar}
 
 \subsection{Bytestring Subtyping}
+
+Bytestrings with smaller max length are subtypes of those with larger max length:
 
 \begin{mathpar}
 \inferrule*[right=S-Bytes]
@@ -144,6 +179,8 @@ With ordering: $\kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}$
 \end{mathpar}
 
 \subsection{Special Types}
+
+User-defined types use \emph{nominal} equality (identity comparison):
 
 \begin{mathpar}
 \inferrule*[right=S-Self]
@@ -160,223 +197,297 @@ With ordering: $\kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}$
 \end{mathpar}
 
 %==============================================================================
+\section{Type Predicates}
+%==============================================================================
+
+The following predicates define validity conditions for type constructors.
+
+\subsection{Valid Static Array Element Types}
+
+The predicate $\validelem{\tau}$ determines if $\tau$ can be an element of a static array:
+
+\begin{mathpar}
+\inferrule*[right=VE-Prim]
+  {\tau \in \{\kw{bool}, \kw{int}N, \kw{uint}N, \kw{decimal}, \kw{address}, \kw{bytes}M\}}
+  {\validelem{\tau}}
+
+\inferrule*[right=VE-Struct]
+  { }
+  {\validelem{\kw{struct}\ S}}
+
+\inferrule*[right=VE-DArray]
+  { }
+  {\validelem{\kw{DynArray}[\tau, n]}}
+
+\inferrule*[right=VE-SArray]
+  {\validelem{\tau}}
+  {\validelem{\tau[n]}}
+
+\inferrule*[right=VE-Interface]
+  { }
+  {\validelem{\kw{interface}\ I}}
+\end{mathpar}
+
+Note: $\kw{Bytes}[n]$, $\kw{String}[n]$, $\kw{flag}$, $\kw{HashMap}$, and $\kw{event}$ are \emph{not} valid static array elements.
+
+\subsection{Valid Dynamic Array Element Types}
+
+The predicate $\validdarray{\tau}$ determines if $\tau$ can be an element of a dynamic array:
+
+\begin{mathpar}
+\inferrule*[right=VD-Elem]
+  {\validelem{\tau}}
+  {\validdarray{\tau}}
+
+\inferrule*[right=VD-Bytes]
+  { }
+  {\validdarray{\kw{Bytes}[n]}}
+
+\inferrule*[right=VD-String]
+  { }
+  {\validdarray{\kw{String}[n]}}
+
+\inferrule*[right=VD-Flag]
+  { }
+  {\validdarray{\kw{flag}\ F}}
+\end{mathpar}
+
+\subsection{Valid HashMap Key Types}
+
+The predicate $\validkey{\kappa}$ determines if $\kappa$ can be a HashMap key:
+
+\begin{mathpar}
+\inferrule*[right=VK-Prim]
+  {\kappa \in \{\kw{bool}, \kw{int}N, \kw{uint}N, \kw{address}, \kw{bytes}M\}}
+  {\validkey{\kappa}}
+
+\inferrule*[right=VK-Bytes]
+  { }
+  {\validkey{\kw{Bytes}[n]}}
+
+\inferrule*[right=VK-String]
+  { }
+  {\validkey{\kw{String}[n]}}
+
+\inferrule*[right=VK-Flag]
+  { }
+  {\validkey{\kw{flag}\ F}}
+\end{mathpar}
+
+%==============================================================================
 \section{Expression Typing Rules}
 %==============================================================================
 
-\fbox{$\judge{\Gamma}{e}{\tau}$} \quad (expression $e$ has type $\tau$ in context $\Gamma$)
+\fbox{$\Gamma; m \vdash e : \tau$} \quad (expression $e$ has type $\tau$ in context $\Gamma$ under mutability $m$)
 
 \subsection{Literals}
 
 \begin{mathpar}
-\inferrule*[right=T-BoolTrue]
+\inferrule*[right=T-True]
   { }
-  {\judge{\Gamma}{\kw{True}}{\kw{bool}}}
+  {\Gamma; m \vdash \kw{True} : \kw{bool}}
 
-\inferrule*[right=T-BoolFalse]
+\inferrule*[right=T-False]
   { }
-  {\judge{\Gamma}{\kw{False}}{\kw{bool}}}
+  {\Gamma; m \vdash \kw{False} : \kw{bool}}
 
 \inferrule*[right=T-IntLit]
   {-2^{N-1} \leq n \leq 2^{N-1} - 1}
-  {\judge{\Gamma}{n}{\kw{int}N}}
+  {\Gamma; m \vdash n : \kw{int}N}
 
 \inferrule*[right=T-UintLit]
   {0 \leq n \leq 2^N - 1}
-  {\judge{\Gamma}{n}{\kw{uint}N}}
+  {\Gamma; m \vdash n : \kw{uint}N}
 
 \inferrule*[right=T-DecLit]
-  {\text{lo} \leq d \leq \text{hi}}
-  {\judge{\Gamma}{d}{\kw{decimal}}}
+  {-2^{167}/10^{10} \leq d \leq (2^{167}-1)/10^{10}}
+  {\Gamma; m \vdash d : \kw{decimal}}
 
 \inferrule*[right=T-Addr]
-  {\text{addr is valid checksummed address}}
-  {\judge{\Gamma}{\kw{0x}\mathit{addr}}{\kw{address}}}
+  {\text{checksummed}(a)}
+  {\Gamma; m \vdash \kw{0x}a : \kw{address}}
 
 \inferrule*[right=T-BytesM]
-  {|s| = M \\ 1 \leq M \leq 32}
-  {\judge{\Gamma}{\kw{0x}s}{\kw{bytes}M}}
+  {|\mathit{hex}| = M \\ 1 \leq M \leq 32}
+  {\Gamma; m \vdash \kw{0x}\mathit{hex} : \kw{bytes}M}
 
 \inferrule*[right=T-BytesLit]
   {|s| \leq n}
-  {\judge{\Gamma}{\kw{b"}s\kw{"}}{\kw{Bytes}[n]}}
+  {\Gamma; m \vdash \kw{b"}s\kw{"} : \kw{Bytes}[n]}
 
 \inferrule*[right=T-StrLit]
   {|s| \leq n}
-  {\judge{\Gamma}{\kw{"}s\kw{"}}{\kw{String}[n]}}
+  {\Gamma; m \vdash \kw{"}s\kw{"} : \kw{String}[n]}
 \end{mathpar}
 
 \subsection{Variables}
 
 \begin{mathpar}
 \inferrule*[right=T-Var]
-  {x : \tau \in \Gamma}
-  {\judge{\Gamma}{x}{\tau}}
+  {(x : \tau) \in \Gamma}
+  {\Gamma; m \vdash x : \tau}
+\end{mathpar}
+
+\subsection{State Variables with Mutability Constraints}
+
+\begin{mathpar}
+\inferrule*[right=T-StateRead]
+  {(x : \tau) \in \Gamma \\ \ell(x) \in \{\kw{storage}, \kw{transient}\} \\ m \neq \kw{pure}}
+  {\Gamma; m \vdash x : \tau}
+
+\inferrule*[right=T-EnvRead]
+  {v \in \{\kw{block.number}, \kw{msg.sender}, \ldots\} \\ m \neq \kw{pure}}
+  {\Gamma; m \vdash v : \tau_v}
+
+\inferrule*[right=T-MsgValue]
+  {m = \kw{payable}}
+  {\Gamma; m \vdash \kw{msg.value} : \kw{uint256}}
 \end{mathpar}
 
 \subsection{Boolean Operations}
 
 \begin{mathpar}
 \inferrule*[right=T-And]
-  {\judge{\Gamma}{e_1}{\kw{bool}} \\ \judge{\Gamma}{e_2}{\kw{bool}}}
-  {\judge{\Gamma}{e_1\ \kw{and}\ e_2}{\kw{bool}}}
+  {\Gamma; m \vdash e_1 : \kw{bool} \\ \Gamma; m \vdash e_2 : \kw{bool}}
+  {\Gamma; m \vdash e_1\ \kw{and}\ e_2 : \kw{bool}}
 
 \inferrule*[right=T-Or]
-  {\judge{\Gamma}{e_1}{\kw{bool}} \\ \judge{\Gamma}{e_2}{\kw{bool}}}
-  {\judge{\Gamma}{e_1\ \kw{or}\ e_2}{\kw{bool}}}
+  {\Gamma; m \vdash e_1 : \kw{bool} \\ \Gamma; m \vdash e_2 : \kw{bool}}
+  {\Gamma; m \vdash e_1\ \kw{or}\ e_2 : \kw{bool}}
 
 \inferrule*[right=T-Not]
-  {\judge{\Gamma}{e}{\kw{bool}}}
-  {\judge{\Gamma}{\kw{not}\ e}{\kw{bool}}}
+  {\Gamma; m \vdash e : \kw{bool}}
+  {\Gamma; m \vdash \kw{not}\ e : \kw{bool}}
 \end{mathpar}
 
 \subsection{Arithmetic Operations}
 
-Let $\mathit{NumericT} = \{\kw{int}N, \kw{uint}N, \kw{decimal}\}$
+Let $\mathit{NumericT} = \{\kw{int}N, \kw{uint}N, \kw{decimal}\}$ and
+$\mathit{IntegerT} = \{\kw{int}N, \kw{uint}N\}$.
 
 \begin{mathpar}
-\inferrule*[right=T-Arith]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau} \\ \tau \in \mathit{NumericT} \\
+\inferrule*[right=T-BinArith]
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\ \tau \in \mathit{NumericT} \\
    \oplus \in \{+, -, *, /\!/, \%\}}
-  {\judge{\Gamma}{e_1 \oplus e_2}{\tau}}
+  {\Gamma; m \vdash e_1 \oplus e_2 : \tau}
 
 \inferrule*[right=T-DecDiv]
-  {\judge{\Gamma}{e_1}{\kw{decimal}} \\ \judge{\Gamma}{e_2}{\kw{decimal}}}
-  {\judge{\Gamma}{e_1\ /\ e_2}{\kw{decimal}}}
+  {\Gamma; m \vdash e_1 : \kw{decimal} \\ \Gamma; m \vdash e_2 : \kw{decimal}}
+  {\Gamma; m \vdash e_1\ /\ e_2 : \kw{decimal}}
 
 \inferrule*[right=T-Neg]
-  {\judge{\Gamma}{e}{\tau} \\ \tau \in \{\kw{int}N, \kw{decimal}\}}
-  {\judge{\Gamma}{-e}{\tau}}
+  {\Gamma; m \vdash e : \tau \\ \tau \in \{\kw{int}N, \kw{decimal}\}}
+  {\Gamma; m \vdash -e : \tau}
 \end{mathpar}
 
 \subsection{Exponentiation}
 
+Exponentiation requires at least one operand to be a compile-time constant for bounds checking:
+
 \begin{mathpar}
-\inferrule*[right=T-Pow]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau} \\
-   \tau \in \mathit{IntegerT} \\ \text{one of } e_1, e_2 \text{ is literal}}
-  {\judge{\Gamma}{e_1\ \kw{**}\ e_2}{\tau}}
+\inferrule*[right=T-PowLit]
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\
+   \tau \in \mathit{IntegerT} \\ \text{isLiteral}(e_1) \lor \text{isLiteral}(e_2)}
+  {\Gamma; m \vdash e_1\ \kw{**}\ e_2 : \tau}
 \end{mathpar}
 
 \subsection{Bitwise Operations}
 
-Let $\mathit{BitwiseT} = \{\kw{uint}N, \kw{bytes}M, \kw{flag}\}$
-
 \begin{mathpar}
-\inferrule*[right=T-Bitwise]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau} \\
-   \tau \in \mathit{BitwiseT} \\ \odot \in \{\&, |, \wedge\}}
-  {\judge{\Gamma}{e_1\ \odot\ e_2}{\tau}}
+\inferrule*[right=T-BitBin]
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\
+   \tau \in \{\kw{uint}N, \kw{bytes}M, \kw{flag}\ F\} \\ \odot \in \{\&, |, \wedge\}}
+  {\Gamma; m \vdash e_1\ \odot\ e_2 : \tau}
 
 \inferrule*[right=T-BitNot]
-  {\judge{\Gamma}{e}{\tau} \\ \tau \in \{\kw{uint256}, \kw{bytes32}, \kw{flag}\}}
-  {\judge{\Gamma}{\sim e}{\tau}}
+  {\Gamma; m \vdash e : \tau \\ \tau \in \{\kw{uint256}, \kw{bytes32}, \kw{flag}\ F\}}
+  {\Gamma; m \vdash \mathord{\sim} e : \tau}
 \end{mathpar}
 
-\subsection{Shift Operations (256-bit types only)}
+\subsection{Shift Operations}
+
+Shifts are only allowed on 256-bit types:
 
 \begin{mathpar}
-\inferrule*[right=T-LShift]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\kw{uint}N} \\
-   \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\}}
-  {\judge{\Gamma}{e_1 \ll e_2}{\tau}}
-
-\inferrule*[right=T-RShift]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\kw{uint}N} \\
-   \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\}}
-  {\judge{\Gamma}{e_1 \gg e_2}{\tau}}
+\inferrule*[right=T-Shift]
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \kw{uint}N \\
+   \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\} \\ \diamond \in \{\ll, \gg\}}
+  {\Gamma; m \vdash e_1\ \diamond\ e_2 : \tau}
 \end{mathpar}
 
 \subsection{Comparisons}
 
 \begin{mathpar}
 \inferrule*[right=T-NumCmp]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau} \\
-   \tau \in \mathit{NumericT} \\ \bowtie\ \in \{<, \leq, >, \geq, ==, !=\}}
-  {\judge{\Gamma}{e_1\ \bowtie\ e_2}{\kw{bool}}}
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\
+   \tau \in \mathit{NumericT} \\ \bowtie\ \in \{<, \leq, >, \geq\}}
+  {\Gamma; m \vdash e_1\ \bowtie\ e_2 : \kw{bool}}
 
 \inferrule*[right=T-Eq]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau}}
-  {\judge{\Gamma}{e_1 == e_2}{\kw{bool}}}
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau}
+  {\Gamma; m \vdash e_1 == e_2 : \kw{bool}}
 
 \inferrule*[right=T-NEq]
-  {\judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau}}
-  {\judge{\Gamma}{e_1\ !=\ e_2}{\kw{bool}}}
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau}
+  {\Gamma; m \vdash e_1\ !=\ e_2 : \kw{bool}}
 \end{mathpar}
 
 \subsection{Membership Tests}
 
 \begin{mathpar}
-\inferrule*[right=T-InSArray]
-  {\judge{\Gamma}{e}{\tau} \\ \judge{\Gamma}{a}{\tau[n]}}
-  {\judge{\Gamma}{e\ \kw{in}\ a}{\kw{bool}}}
-
-\inferrule*[right=T-InDArray]
-  {\judge{\Gamma}{e}{\tau} \\ \judge{\Gamma}{a}{\kw{DynArray}[\tau, n]}}
-  {\judge{\Gamma}{e\ \kw{in}\ a}{\kw{bool}}}
+\inferrule*[right=T-InArray]
+  {\Gamma; m \vdash e : \tau \\ \Gamma; m \vdash a : \tau[n] \lor \Gamma; m \vdash a : \kw{DynArray}[\tau, n]}
+  {\Gamma; m \vdash e\ \kw{in}\ a : \kw{bool}}
 
 \inferrule*[right=T-InFlag]
-  {\judge{\Gamma}{e}{\kw{flag}\ F} \\ \judge{\Gamma}{f}{\kw{flag}\ F}}
-  {\judge{\Gamma}{e\ \kw{in}\ f}{\kw{bool}}}
+  {\Gamma; m \vdash e : \kw{flag}\ F \\ \Gamma; m \vdash f : \kw{flag}\ F}
+  {\Gamma; m \vdash e\ \kw{in}\ f : \kw{bool}}
 \end{mathpar}
 
-\subsection{Subscript/Index Access}
+\subsection{Subscript Access}
 
 \begin{mathpar}
 \inferrule*[right=T-SArrayIdx]
-  {\judge{\Gamma}{e}{\tau[n]} \\ \judge{\Gamma}{i}{\mathit{IntegerT}} \\ 0 \leq i < n}
-  {\judge{\Gamma}{e[i]}{\tau}}
+  {\Gamma; m \vdash e : \tau[n] \\ \Gamma; m \vdash i : \tau_i \\ \tau_i \in \mathit{IntegerT} \\ 0 \leq i < n}
+  {\Gamma; m \vdash e[i] : \tau}
 
 \inferrule*[right=T-DArrayIdx]
-  {\judge{\Gamma}{e}{\kw{DynArray}[\tau, n]} \\ \judge{\Gamma}{i}{\mathit{IntegerT}}}
-  {\judge{\Gamma}{e[i]}{\tau}}
+  {\Gamma; m \vdash e : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash i : \tau_i \\ \tau_i \in \mathit{IntegerT}}
+  {\Gamma; m \vdash e[i] : \tau}
 
 \inferrule*[right=T-MapIdx]
-  {\judge{\Gamma}{m}{\kw{HashMap}[\kappa, \tau]} \\ \judge{\Gamma}{k}{\kappa}}
-  {\judge{\Gamma}{m[k]}{\tau}}
+  {\Gamma; m \vdash h : \kw{HashMap}[\kappa, \tau] \\ \Gamma; m \vdash k : \kappa}
+  {\Gamma; m \vdash h[k] : \tau}
 
 \inferrule*[right=T-TupleIdx]
-  {\judge{\Gamma}{t}{(\tau_0, \ldots, \tau_{n-1})} \\ 0 \leq i < n}
-  {\judge{\Gamma}{t[i]}{\tau_i}}
+  {\Gamma; m \vdash t : (\tau_0, \ldots, \tau_{n-1}) \\ 0 \leq i < n \\ \text{isLiteral}(i)}
+  {\Gamma; m \vdash t[i] : \tau_i}
 \end{mathpar}
 
 \subsection{Attribute Access}
 
 \begin{mathpar}
 \inferrule*[right=T-StructAttr]
-  {\judge{\Gamma}{e}{\kw{struct}\ S} \\ f : \tau \in S}
-  {\judge{\Gamma}{e.f}{\tau}}
+  {\Gamma; m \vdash e : \kw{struct}\ S \\ (f : \tau) \in S}
+  {\Gamma; m \vdash e.f : \tau}
 
-\inferrule*[right=T-AddrBal]
-  {\judge{\Gamma}{e}{\kw{address}}}
-  {\judge{\Gamma}{e.\kw{balance}}{\kw{uint256}}}
-
-\inferrule*[right=T-AddrSize]
-  {\judge{\Gamma}{e}{\kw{address}}}
-  {\judge{\Gamma}{e.\kw{codesize}}{\kw{uint256}}}
-
-\inferrule*[right=T-AddrHash]
-  {\judge{\Gamma}{e}{\kw{address}}}
-  {\judge{\Gamma}{e.\kw{codehash}}{\kw{bytes32}}}
-
-\inferrule*[right=T-AddrContract]
-  {\judge{\Gamma}{e}{\kw{address}}}
-  {\judge{\Gamma}{e.\kw{is\_contract}}{\kw{bool}}}
+\inferrule*[right=T-AddrAttr]
+  {\Gamma; m \vdash e : \kw{address} \\ m \neq \kw{pure} \\
+   a \in \{\kw{balance} : \kw{uint256}, \kw{codesize} : \kw{uint256},
+           \kw{codehash} : \kw{bytes32}, \kw{is\_contract} : \kw{bool}\}}
+  {\Gamma; m \vdash e.a : \tau_a}
 \end{mathpar}
 
 \subsection{Composite Literals}
 
 \begin{mathpar}
-\inferrule*[right=T-SArrayLit]
-  {\judge{\Gamma}{e_1}{\tau} \\ \cdots \\ \judge{\Gamma}{e_n}{\tau}}
-  {\judge{\Gamma}{[e_1, \ldots, e_n]}{\tau[n]}}
-
-\inferrule*[right=T-DArrayLit]
-  {\judge{\Gamma}{e_1}{\tau} \\ \cdots \\ \judge{\Gamma}{e_n}{\tau}}
-  {\judge{\Gamma}{[e_1, \ldots, e_n]}{\kw{DynArray}[\tau, n]}}
+\inferrule*[right=T-ArrayLit]
+  {\Gamma; m \vdash e_i : \tau \text{ for all } i \in 1..n}
+  {\Gamma; m \vdash [e_1, \ldots, e_n] : \tau[n]}
 
 \inferrule*[right=T-Tuple]
-  {\judge{\Gamma}{e_1}{\tau_1} \\ \cdots \\ \judge{\Gamma}{e_n}{\tau_n}}
-  {\judge{\Gamma}{(e_1, \ldots, e_n)}{(\tau_1, \ldots, \tau_n)}}
+  {\Gamma; m \vdash e_i : \tau_i \text{ for all } i \in 1..n}
+  {\Gamma; m \vdash (e_1, \ldots, e_n) : (\tau_1, \ldots, \tau_n)}
 \end{mathpar}
 
 \subsection{Struct Construction}
@@ -384,136 +495,185 @@ Let $\mathit{BitwiseT} = \{\kw{uint}N, \kw{bytes}M, \kw{flag}\}$
 \begin{mathpar}
 \inferrule*[right=T-StructCtor]
   {\kw{struct}\ S = \{f_1 : \tau_1, \ldots, f_n : \tau_n\} \\
-   \judge{\Gamma}{e_i}{\tau_i} \text{ for all } i}
-  {\judge{\Gamma}{S(f_1 = e_1, \ldots, f_n = e_n)}{\kw{struct}\ S}}
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i}
+  {\Gamma; m \vdash S(f_1 = e_1, \ldots, f_n = e_n) : \kw{struct}\ S}
 \end{mathpar}
 
 \subsection{Conditional Expression}
 
 \begin{mathpar}
 \inferrule*[right=T-IfExp]
-  {\judge{\Gamma}{e_c}{\kw{bool}} \\ \judge{\Gamma}{e_1}{\tau} \\ \judge{\Gamma}{e_2}{\tau}}
-  {\judge{\Gamma}{e_1\ \kw{if}\ e_c\ \kw{else}\ e_2}{\tau}}
+  {\Gamma; m \vdash e_c : \kw{bool} \\ \Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau}
+  {\Gamma; m \vdash e_1\ \kw{if}\ e_c\ \kw{else}\ e_2 : \tau}
 \end{mathpar}
 
 \subsection{Type Conversion}
 
 \begin{mathpar}
 \inferrule*[right=T-Convert]
-  {\judge{\Gamma}{e}{\tau_1} \\ \text{convert}(\tau_1, \tau_2) \text{ is valid}}
-  {\judge{\Gamma}{\kw{convert}(e, \tau_2)}{\tau_2}}
+  {\Gamma; m \vdash e : \tau_1 \\ \convertible{\tau_1}{\tau_2}}
+  {\Gamma; m \vdash \kw{convert}(e, \tau_2) : \tau_2}
 \end{mathpar}
 
 \subsection{Dynamic Array Methods}
 
 \begin{mathpar}
 \inferrule*[right=T-Append]
-  {\judge{\Gamma}{a}{\kw{DynArray}[\tau, n]} \\ \judge{\Gamma}{e}{\tau}}
-  {\judge{\Gamma}{a.\kw{append}(e)}{()}}
+  {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\
+   \mu(a) = \kw{modifiable}}
+  {\Gamma; m \vdash a.\kw{append}(e) : ()}
 
 \inferrule*[right=T-Pop]
-  {\judge{\Gamma}{a}{\kw{DynArray}[\tau, n]}}
-  {\judge{\Gamma}{a.\kw{pop}()}{\tau}}
+  {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \mu(a) = \kw{modifiable}}
+  {\Gamma; m \vdash a.\kw{pop}() : \tau}
 \end{mathpar}
 
 %==============================================================================
 \section{Function Typing Rules}
 %==============================================================================
 
-\fbox{$\judgem{\Gamma}{m}{f}{(\overline{\tau}) \to \tau_r}$} \quad (function $f$ with mutability $m$)
+\subsection{Function Types}
+
+Function types include visibility and mutability:
+\[
+\sigma ::= (\tau_1, \ldots, \tau_n) \xrightarrow{v, m} \tau_r
+\]
+where $v \in \{\kw{internal}, \kw{external}, \kw{deploy}\}$ and $m \in \{\kw{pure}, \kw{view}, \kw{nonpayable}, \kw{payable}\}$.
 
 \subsection{Function Definition}
 
 \begin{mathpar}
 \inferrule*[right=T-FunDef]
-  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n \vdash_m \mathit{body} \dashv \tau_r \\
-   \mathit{vis} \in \{\kw{internal}, \kw{external}, \kw{deploy}\}}
-  {\Gamma \vdash \kw{@}\mathit{vis}\ \kw{@}m\ \kw{def}\ f(x_1 : \tau_1, \ldots, x_n : \tau_n) \to \tau_r :
-   (\tau_1, \ldots, \tau_n) \to \tau_r}
+  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n; m_f \vdash \mathit{body} \Rightarrow \Gamma' \\
+   \text{returns}(\mathit{body}, \tau_r)}
+  {\Gamma \vdash \kw{@}v\ \kw{@}m_f\ \kw{def}\ f(\overline{x : \tau}) \to \tau_r :
+   (\overline{\tau}) \xrightarrow{v, m_f} \tau_r}
 \end{mathpar}
 
-\subsection{Function Calls}
+\subsection{Internal Function Call}
 
 \begin{mathpar}
 \inferrule*[right=T-InternalCall]
-  {\judge{\Gamma}{f}{(\tau_1, \ldots, \tau_n) \to \tau_r} \\
-   \judge{\Gamma}{e_i}{\tau_i'} \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i}
-  {\judge{\Gamma}{f(e_1, \ldots, e_n)}{\tau_r}}
+  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_r) \in \Gamma \\
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
+   m_f \leq m \lor m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash f(\overline{e}) : \tau_r}
+\end{mathpar}
 
+\subsection{External Function Calls}
+
+External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
+
+\begin{mathpar}
 \inferrule*[right=T-ExtCall]
-  {\judge{\Gamma}{e}{\kw{interface}\ I} \\ f : (\tau_1, \ldots, \tau_n) \to \tau_r \in I \\
-   \judge{\Gamma}{e_i}{\tau_i'} \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
-   m_f \geq \kw{nonpayable}}
-  {\judge{\Gamma}{\kw{extcall}\ e.f(e_1, \ldots, e_n)}{\tau_r}}
+  {\Gamma; m \vdash e : \kw{interface}\ I \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
+   m_f \geq \kw{nonpayable} \\
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{extcall}\ e.f(\overline{e}) : \tau_r}
 
 \inferrule*[right=T-StaticCall]
-  {\judge{\Gamma}{e}{\kw{interface}\ I} \\ f : (\tau_1, \ldots, \tau_n) \to \tau_r \in I \\
-   \judge{\Gamma}{e_i}{\tau_i'} \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
-   m_f \in \{\kw{view}, \kw{pure}\}}
-  {\judge{\Gamma}{\kw{staticcall}\ e.f(e_1, \ldots, e_n)}{\tau_r}}
+  {\Gamma; m \vdash e : \kw{interface}\ I \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
+   m_f \in \{\kw{view}, \kw{pure}\} \\
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i}
+  {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) : \tau_r}
 \end{mathpar}
 
 %==============================================================================
 \section{Statement Typing Rules}
 %==============================================================================
 
-\fbox{$\stmt{\Gamma}{m}{s}{\Gamma'}$} \quad (statement $s$ transforms context under mutability $m$)
+\fbox{$\Gamma; m \vdash s \Rightarrow \Gamma'$} \quad (statement $s$ transforms $\Gamma$ to $\Gamma'$ under mutability $m$)
+
+The arrow notation $\Rightarrow$ follows the convention for small-step semantics and effect
+systems~\cite{wright1994syntactic}, indicating that execution of $s$ may extend the typing context.
 
 \subsection{Variable Declaration}
 
 \begin{mathpar}
 \inferrule*[right=T-VarDecl]
-  {\judge{\Gamma}{e}{\tau'} \\ \subtype{\tau'}{\tau}}
-  {\stmt{\Gamma}{m}{x : \tau = e}{\Gamma, x : \tau}}
+  {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau}}
+  {\Gamma; m \vdash (x : \tau = e) \Rightarrow \Gamma, x : \tau}
 \end{mathpar}
 
 \subsection{Assignment}
 
 \begin{mathpar}
 \inferrule*[right=T-Assign]
-  {x : \tau \in \Gamma \\ \judge{\Gamma}{e}{\tau'} \\
-   \subtype{\tau'}{\tau} \\ \mu(x) = \kw{modifiable}}
-  {\stmt{\Gamma}{m}{x = e}{\Gamma}}
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau' \\
+   \subtype{\tau'}{\tau} \\ \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash (x = e) \Rightarrow \Gamma}
 
 \inferrule*[right=T-AugAssign]
-  {x : \tau \in \Gamma \\ \judge{\Gamma}{e}{\tau} \\
-   \tau \in \mathit{NumericT} \\ \mu(x) = \kw{modifiable}}
-  {\stmt{\Gamma}{m}{x\ \oplus\kw{=}\ e}{\Gamma}}
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau \\ \tau \in \mathit{NumericT} \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash (x\ \oplus\!=\ e) \Rightarrow \Gamma}
 \end{mathpar}
 
 \subsection{Control Flow}
 
 \begin{mathpar}
 \inferrule*[right=T-If]
-  {\judge{\Gamma}{e}{\kw{bool}} \\
-   \stmt{\Gamma}{m}{s_1}{\Gamma_1} \\
-   \stmt{\Gamma}{m}{s_2}{\Gamma_2}}
-  {\stmt{\Gamma}{m}{\kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2}{\Gamma}}
+  {\Gamma; m \vdash e : \kw{bool} \\
+   \Gamma; m \vdash s_1 \Rightarrow \Gamma_1 \\
+   \Gamma; m \vdash s_2 \Rightarrow \Gamma_2}
+  {\Gamma; m \vdash (\kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2) \Rightarrow \Gamma}
 
 \inferrule*[right=T-ForRange]
-  {\judge{\Gamma}{e_1}{\mathit{IntegerT}} \\ \judge{\Gamma}{e_2}{\mathit{IntegerT}} \\
-   \stmt{\Gamma, i : \mathit{IntegerT}}{m}{s}{\Gamma'}}
-  {\stmt{\Gamma}{m}{\kw{for}\ i : \mathit{IntegerT}\ \kw{in range}(e_1, e_2)\kw{:}\ s}{\Gamma}}
+  {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\ \tau \in \mathit{IntegerT} \\
+   \Gamma, i : \tau; m \vdash s \Rightarrow \Gamma'}
+  {\Gamma; m \vdash (\kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s) \Rightarrow \Gamma}
 
 \inferrule*[right=T-ForArray]
-  {\judge{\Gamma}{a}{\tau[n]} \\ \stmt{\Gamma, x : \tau}{m}{s}{\Gamma'}}
-  {\stmt{\Gamma}{m}{\kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}{\Gamma}}
+  {\Gamma; m \vdash a : \tau[n] \lor \Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\
+   \Gamma, x : \tau; m \vdash s \Rightarrow \Gamma'}
+  {\Gamma; m \vdash (\kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s) \Rightarrow \Gamma}
 \end{mathpar}
 
-\subsection{Return, Assert, Raise}
+\subsection{Return}
 
 \begin{mathpar}
 \inferrule*[right=T-Return]
-  {\judge{\Gamma}{e}{\tau'} \\ \subtype{\tau'}{\tau_r}}
-  {\stmt{\Gamma}{m}{\kw{return}\ e}{\bot}}
+  {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau_r}}
+  {\Gamma; m \vdash \kw{return}\ e \Rightarrow \bot}
 
+\inferrule*[right=T-ReturnVoid]
+  {\tau_r = ()}
+  {\Gamma; m \vdash \kw{return} \Rightarrow \bot}
+\end{mathpar}
+
+\subsection{Assert}
+
+Assert can optionally take a revert message:
+
+\begin{mathpar}
 \inferrule*[right=T-Assert]
-  {\judge{\Gamma}{e}{\kw{bool}}}
-  {\stmt{\Gamma}{m}{\kw{assert}\ e}{\Gamma}}
+  {\Gamma; m \vdash e : \kw{bool}}
+  {\Gamma; m \vdash \kw{assert}\ e \Rightarrow \Gamma}
 
+\inferrule*[right=T-AssertMsg]
+  {\Gamma; m \vdash e : \kw{bool} \\ \Gamma; m \vdash \mathit{msg} : \kw{String}[n] \\ n \leq 1024}
+  {\Gamma; m \vdash \kw{assert}\ e,\ \mathit{msg} \Rightarrow \Gamma}
+
+\inferrule*[right=T-AssertUnreach]
+  {\Gamma; m \vdash e : \kw{bool}}
+  {\Gamma; m \vdash \kw{assert}\ e,\ \kw{UNREACHABLE} \Rightarrow \Gamma}
+\end{mathpar}
+
+\subsection{Raise}
+
+\begin{mathpar}
 \inferrule*[right=T-Raise]
-  {\judge{\Gamma}{e}{\kw{String}[n]} \\ n \leq 1024}
-  {\stmt{\Gamma}{m}{\kw{raise}\ e}{\bot}}
+  {\Gamma; m \vdash e : \kw{String}[n] \\ n \leq 1024}
+  {\Gamma; m \vdash \kw{raise}\ e \Rightarrow \bot}
+
+\inferrule*[right=T-RaiseUnreach]
+  { }
+  {\Gamma; m \vdash \kw{raise}\ \kw{UNREACHABLE} \Rightarrow \bot}
 \end{mathpar}
 
 \subsection{Event Logging}
@@ -521,48 +681,71 @@ Let $\mathit{BitwiseT} = \{\kw{uint}N, \kw{bytes}M, \kw{flag}\}$
 \begin{mathpar}
 \inferrule*[right=T-Log]
   {\kw{event}\ E = \{a_1 : \tau_1, \ldots, a_n : \tau_n\} \\
-   \judge{\Gamma}{e_i}{\tau_i} \text{ for all } i \\ m \geq \kw{nonpayable}}
-  {\stmt{\Gamma}{m}{\kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n)}{\Gamma}}
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n) \Rightarrow \Gamma}
 \end{mathpar}
 
 %==============================================================================
-\section{Mutability Constraints}
+\section{Type Conversion Rules}
 %==============================================================================
 
-\fbox{$m_1 \leq m_2$} \quad (mutability ordering)
+The predicate $\convertible{\tau_1}{\tau_2}$ defines valid explicit conversions:
 
-\[
-\kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}
-\]
-
-\subsection{State Access Rules}
+\subsection{Integer Conversions}
 
 \begin{mathpar}
-\inferrule*[right=M-Pure]
-  {m = \kw{pure}}
-  {\text{No state variable access}}
+\inferrule*[right=Conv-IntInt]
+  {\tau_1 \in \mathit{IntegerT} \\ \tau_2 \in \mathit{IntegerT}}
+  {\convertible{\tau_1}{\tau_2}}
 
-\inferrule*[right=M-View]
-  {m = \kw{view}}
-  {\text{Read-only state access}}
+\inferrule*[right=Conv-IntDec]
+  {\tau \in \mathit{IntegerT}}
+  {\convertible{\tau}{\kw{decimal}}}
 
-\inferrule*[right=M-Nonpayable]
-  {m \geq \kw{nonpayable}}
-  {\text{Read/write state access}}
-
-\inferrule*[right=M-Payable]
-  {m = \kw{payable}}
-  {\kw{msg.value} \text{ accessible}}
+\inferrule*[right=Conv-DecInt]
+  {\tau \in \mathit{IntegerT}}
+  {\convertible{\kw{decimal}}{\tau}}
 \end{mathpar}
 
-\subsection{Call Mutability}
+\subsection{Byte Conversions}
 
 \begin{mathpar}
-\inferrule*[right=M-Call]
-  {\Gamma \vdash_m \mathit{caller} \\
-   f \text{ has mutability } m_f \\
-   m_f \leq m \lor m \geq \kw{nonpayable}}
-  {\text{Call to } f \text{ is valid}}
+\inferrule*[right=Conv-BytesInt]
+  { }
+  {\convertible{\kw{bytes}M}{\kw{int}N} \land \convertible{\kw{bytes}M}{\kw{uint}N}}
+
+\inferrule*[right=Conv-IntBytes]
+  { }
+  {\convertible{\kw{int}N}{\kw{bytes}M} \land \convertible{\kw{uint}N}{\kw{bytes}M}}
+\end{mathpar}
+
+\subsection{Address Conversions}
+
+\begin{mathpar}
+\inferrule*[right=Conv-AddrInt]
+  { }
+  {\convertible{\kw{address}}{\kw{uint160}} \land \convertible{\kw{uint160}}{\kw{address}}}
+
+\inferrule*[right=Conv-AddrBytes]
+  { }
+  {\convertible{\kw{address}}{\kw{bytes20}} \land \convertible{\kw{bytes20}}{\kw{address}}}
+\end{mathpar}
+
+\subsection{Boolean Conversions}
+
+\begin{mathpar}
+\inferrule*[right=Conv-ToBool]
+  {\tau \in \mathit{IntegerT} \cup \{\kw{decimal}, \kw{bytes}M, \kw{address}\}}
+  {\convertible{\tau}{\kw{bool}}}
+\end{mathpar}
+
+\subsection{Flag Conversions}
+
+\begin{mathpar}
+\inferrule*[right=Conv-Flag]
+  { }
+  {\convertible{\kw{flag}\ F}{\kw{uint256}} \land \convertible{\kw{uint256}}{\kw{flag}\ F}}
 \end{mathpar}
 
 %==============================================================================
@@ -573,50 +756,21 @@ Let $\mathit{BitwiseT} = \{\kw{uint}N, \kw{bytes}M, \kw{flag}\}$
 
 \begin{mathpar}
 \inferrule*[right=L-HashMap]
-  { }
-  {\kw{HashMap} \text{ only valid in } \ell \in \{\kw{storage}, \kw{transient}\}}
+  {\ell \in \{\kw{storage}, \kw{transient}\}}
+  {\kw{HashMap}[\kappa, \tau]\ \text{valid at}\ \ell}
 
 \inferrule*[right=L-ExtParam]
-  {f \text{ is external}}
-  {\text{Parameters: } \ell = \kw{calldata}}
+  {f\ \text{is external}}
+  {\text{params}(f)\ \text{have location}\ \kw{calldata}}
 
 \inferrule*[right=L-IntParam]
-  {f \text{ is internal}}
-  {\text{Parameters: } \ell = \kw{memory}}
+  {f\ \text{is internal}}
+  {\text{params}(f)\ \text{have location}\ \kw{memory}}
 
 \inferrule*[right=L-Immutable]
-  {\ell = \kw{code}}
-  {\text{Read anywhere; write only in constructor}}
+  {\ell(x) = \kw{code} \\ f\ \text{is not constructor}}
+  {\mu(x) = \kw{runtime\_constant}}
 \end{mathpar}
-
-%==============================================================================
-\section{Type Constraints}
-%==============================================================================
-
-\subsection{Valid HashMap Key Types}
-
-\[
-\kappa \in \{\kw{bool}, \kw{int}N, \kw{uint}N, \kw{address}, \kw{bytes}M, \kw{Bytes}[n], \kw{String}[n], \kw{flag}\}
-\]
-
-\subsection{Valid Array Element Types}
-
-Static arrays: $\tau$ where $\tau.\mathit{is\_valid\_element\_type} = \kw{true}$
-
-Dynamic arrays: $\tau$ where $\tau.\mathit{\_as\_darray} = \kw{true}$
-
-\subsection{Conversion Rules}
-
-Valid conversions via \kw{convert}($\tau_1$, $\tau_2$):
-
-\begin{itemize}
-  \item Between integer types (with bounds checking)
-  \item Between \kw{bytes}$M$ and integers (with sign extension for signed)
-  \item Between \kw{address} and \kw{uint160}
-  \item \kw{decimal} to/from integers (truncation toward zero)
-  \item \kw{bool} from any nonzero value
-  \item \kw{flag} to/from \kw{uint256} only
-\end{itemize}
 
 %==============================================================================
 \section{Summary}
@@ -626,12 +780,36 @@ The Vyper type system is characterized by:
 
 \begin{enumerate}
   \item \textbf{No implicit coercions}: Types must match exactly or through explicit subtyping
-  \item \textbf{Nominal typing}: User-defined types (structs, flags, events) use identity comparison
-  \item \textbf{Structural subtyping}: Bytestrings and dynamic arrays are subtypes by length
-  \item \textbf{Mutability tracking}: Functions declare state access level (pure/view/nonpayable/payable)
+  \item \textbf{Nominal typing}: User-defined types use identity comparison
+  \item \textbf{Structural subtyping}: Bytestrings and dynamic arrays by max length
+  \item \textbf{Effect tracking}: Function mutability ($m$) threads through all judgments
   \item \textbf{Location tracking}: Variables have associated storage locations
-  \item \textbf{Explicit conversions}: All type conversions require the \kw{convert()} builtin
-  \item \textbf{Bounds checking}: Integer operations are checked for overflow at compile-time where possible
+  \item \textbf{Explicit conversions}: Via \kw{convert()} with bounds checking
+  \item \textbf{Static bounds}: Integer overflow checked at compile-time where possible
 \end{enumerate}
+
+%==============================================================================
+\section*{References}
+%==============================================================================
+
+\begin{thebibliography}{9}
+
+\bibitem{pierce2002types}
+Benjamin C. Pierce.
+\textit{Types and Programming Languages}.
+MIT Press, 2002.
+
+\bibitem{wright1994syntactic}
+Andrew K. Wright and Matthias Felleisen.
+A syntactic approach to type soundness.
+\textit{Information and Computation}, 115(1):38--94, 1994.
+
+\bibitem{nielson1999type}
+Flemming Nielson, Hanne Riis Nielson, and Chris Hankin.
+\textit{Principles of Program Analysis}.
+Springer, 1999.
+Chapter 2: Type and Effect Systems.
+
+\end{thebibliography}
 
 \end{document}
