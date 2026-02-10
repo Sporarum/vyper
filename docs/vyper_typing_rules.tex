@@ -27,11 +27,7 @@
 \maketitle
 
 \begin{abstract}
-This document presents the formal typing rules for the Vyper smart contract programming language,
-extracted from the compiler implementation. Vyper is a statically typed, Pythonic language
-targeting the Ethereum Virtual Machine (EVM). These rules follow standard notation from
-Pierce's \emph{Types and Programming Languages}~\cite{pierce2002types} and bidirectional
-typing literature~\cite{dunfield2013complete}.
+Formal typing rules for Vyper, a statically typed smart contract language targeting the EVM.
 \end{abstract}
 
 \tableofcontents
@@ -68,24 +64,7 @@ typing literature~\cite{dunfield2013complete}.
 \mid \quad & \kw{interface}\ I && \text{Interface type}
 \end{align*}
 
-\subsection{None Type}
-
-The \kw{None} type represents computations that produce no useful value:
-\[
-\kw{None}
-\]
-This aligns with Python's \texttt{None}. The type $\kw{None}$ is used for:
-\begin{itemize}
-  \item Statements and expressions evaluated solely for side effects
-  \item The return type of functions with no return value
-  \item Terminating operations (\kw{raise}, \kw{selfdestruct}, \kw{break}, \kw{continue})
-\end{itemize}
-The type $\kw{None}$ cannot be used as a variable type, array element type,
-or function parameter type.
-
 \subsection{Type Classes}
-
-We define the following type classes used throughout this document:
 
 \begin{align*}
 \mathit{IntegerT} &= \{\kw{int}N, \kw{uint}N \mid N \in \{8,16,\ldots,256\}\} \\
@@ -115,11 +94,7 @@ We define the following type classes used throughout this document:
 \mu ::= \kw{constant} < \kw{runtime\_constant} < \kw{modifiable}
 \]
 
-For an expression $e$, we write $\mu(e)$ for its modifiability. Literals have $\mu = \kw{constant}$.
-Compound expressions inherit modifiability from their subexpressions (e.g., operations on
-constants yield constants). Constant folding reduces constant expressions to literals at compile time.
-
-\subsection{State Mutability (for functions)}
+\subsection{State Mutability}
 
 \[
 m ::= \kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}
@@ -127,29 +102,13 @@ m ::= \kw{pure} < \kw{view} < \kw{nonpayable} < \kw{payable}
 
 \subsection{Judgment Forms}
 
-We use the following judgment forms, following standard conventions~\cite{pierce2002types,dunfield2013complete}:
-
 \begin{center}
 \begin{tabular}{ll}
 $\Gamma; m; \tau_r \vdash e : \tau$ & Expression $e$ has type $\tau$ \\
 $\Gamma; m; \tau_r \vdash e : \tau \dashv \Gamma'$ & Expression $e$ has type $\tau$, extending context to $\Gamma'$ \\
-$\subtype{\tau_1}{\tau_2}$ & Type $\tau_1$ is a subtype of $\tau_2$ \\
+$\subtype{\tau_1}{\tau_2}$ & $\tau_1$ is a subtype of $\tau_2$ \\
 \end{tabular}
 \end{center}
-
-The notation threads:
-\begin{itemize}
-  \item $m$ --- the enclosing function's mutability
-  \item $\tau_r$ --- the enclosing function's return type (used by \kw{return})
-\end{itemize}
-
-\paragraph{Unified Expression Typing.}
-We use a single judgment form for both expressions and statements. Traditional ``statements''
-and terminating operations (\kw{raise}, \kw{selfdestruct}) are expressions of type $\kw{None}$.
-
-The type $\kw{None}$ cannot be used as a value: it cannot be assigned to variables
-or passed as function arguments. This prevents constructs like \texttt{x = (y = 1)}
-since assignment has type $\kw{None}$.
 
 \paragraph{Output Context.}
 Some expressions extend the typing context (e.g., variable declarations).
@@ -174,13 +133,7 @@ When the context is unchanged, we omit $\dashv \Gamma'$.
   {\subtype{\tau_1}{\tau_3}}
 \end{mathpar}
 
-Note: Vyper has \emph{no implicit coercions} between numeric types. For example,
-$\kw{uint8} \not<: \kw{uint256}$. All numeric types are only subtypes of themselves via \textsc{S-Refl}.
-
 \subsection{Dynamic Array Subtyping}
-
-Dynamic arrays are \emph{covariant} in element type and max length
-(a smaller-capacity array can be assigned where a larger one is expected):
 
 \begin{mathpar}
 \inferrule*[right=S-DynArray]
@@ -188,11 +141,7 @@ Dynamic arrays are \emph{covariant} in element type and max length
   {\subtype{\kw{DynArray}[\tau_1, n_1]}{\kw{DynArray}[\tau_2, n_2]}}
 \end{mathpar}
 
-Note: Static arrays $\tau[n]$ are \emph{invariant}---only \textsc{S-Refl} applies.
-
 \subsection{Bytestring Subtyping}
-
-Bytestrings with smaller max length are subtypes of those with larger max length:
 
 \begin{mathpar}
 \inferrule*[right=S-Bytes]
@@ -205,10 +154,6 @@ Bytestrings with smaller max length are subtypes of those with larger max length
 \end{mathpar}
 
 \subsection{Nominal Types}
-
-User-defined types use \emph{nominal} equality. We write $S_1 \equiv S_2$ to mean
-that $S_1$ and $S_2$ are the \emph{same declaration} (object identity), not merely
-structurally equivalent.
 
 \begin{mathpar}
 \inferrule*[right=S-Self]
@@ -228,11 +173,7 @@ structurally equivalent.
 \section{Type Predicates}
 %==============================================================================
 
-The following predicates define validity conditions for type constructors.
-
 \subsection{Valid Static Array Element Types}
-
-The predicate $\validelem{\tau}$ determines if $\tau$ can be an element of a static array:
 
 \begin{mathpar}
 \inferrule*[right=VE-Prim]
@@ -256,12 +197,7 @@ The predicate $\validelem{\tau}$ determines if $\tau$ can be an element of a sta
   {\validelem{\kw{interface}\ I}}
 \end{mathpar}
 
-The following types are \textbf{not} valid static array elements:
-$\kw{Bytes}[n]$, $\kw{String}[n]$, $\kw{flag}$, $\kw{HashMap}$, $\kw{event}$, tuple.
-
 \subsection{Valid Dynamic Array Element Types}
-
-The predicate $\validdarray{\tau}$ determines if $\tau$ can be an element of a dynamic array:
 
 \begin{mathpar}
 \inferrule*[right=VD-Elem]
@@ -281,12 +217,7 @@ The predicate $\validdarray{\tau}$ determines if $\tau$ can be an element of a d
   {\validdarray{\kw{flag}\ F}}
 \end{mathpar}
 
-The following types are \textbf{not} valid dynamic array elements:
-$\kw{HashMap}$, $\kw{event}$, tuple.
-
 \subsection{Valid HashMap Key Types}
-
-The predicate $\validkey{\kappa}$ determines if $\kappa$ can be a HashMap key:
 
 \begin{mathpar}
 \inferrule*[right=VK-Prim]
@@ -310,19 +241,11 @@ The predicate $\validkey{\kappa}$ determines if $\kappa$ can be a HashMap key:
   {\validkey{\kw{interface}\ I}}
 \end{mathpar}
 
-The following types are \textbf{not} valid HashMap keys:
-$\kw{struct}$, $\tau[n]$, $\kw{DynArray}$, $\kw{HashMap}$, $\kw{event}$, tuple.
-
 %==============================================================================
 \section{Expression Typing Rules}
 %==============================================================================
 
-\fbox{$\Gamma; m; \tau_r \vdash e : \tau$} \quad (expression $e$ has type $\tau$)
-
-\medskip
-\noindent
-For brevity, we omit $\tau_r$ from rules that do not reference the return type.
-The return type $\tau_r$ is only needed for \kw{return} expressions.
+\fbox{$\Gamma; m; \tau_r \vdash e : \tau$}
 
 \subsection{Literals}
 
@@ -384,8 +307,6 @@ The return type $\tau_r$ is only needed for \kw{return} expressions.
   {\Gamma; m \vdash \kw{msg.value} : \kw{uint256}}
 \end{mathpar}
 
-Environment variables are accessible when $m \neq \kw{pure}$:
-
 \begin{center}
 \begin{tabular}{@{}llll@{}}
 \toprule
@@ -439,20 +360,12 @@ Environment variables are accessible when $m \neq \kw{pure}$:
 
 \subsection{Exponentiation}
 
-Exponentiation requires at least one operand to be compile-time constant.
-This enables static bounds checking:
-
 \begin{mathpar}
 \inferrule*[right=T-Pow]
   {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\
    \tau \in \mathit{IntegerT} \\ \mu(e_1) = \kw{constant} \lor \mu(e_2) = \kw{constant}}
   {\Gamma; m \vdash e_1\ \kw{**}\ e_2 : \tau}
 \end{mathpar}
-
-For example, both \kw{x ** 2} and \kw{x ** (1 + 1)} are valid because \kw{2} and
-\kw{1 + 1} (which folds to \kw{2}) are compile-time constants. However, \kw{x ** y}
-where \kw{y} is a runtime variable is rejected. The rule ensures the compiler can
-statically verify that the result does not overflow.
 
 \subsection{Bitwise Operations}
 
@@ -468,8 +381,6 @@ statically verify that the result does not overflow.
 \end{mathpar}
 
 \subsection{Shift Operations}
-
-Shifts are only allowed on 256-bit types:
 
 \begin{mathpar}
 \inferrule*[right=T-Shift]
@@ -591,8 +502,6 @@ Shifts are only allowed on 256-bit types:
   {\Gamma; m \vdash \kw{empty}(\tau) : \tau}
 \end{mathpar}
 
-The \kw{empty} builtin returns the zero-initialized value for any type $\tau$.
-
 \subsection{Dynamic Array Methods}
 
 \begin{mathpar}
@@ -601,21 +510,15 @@ The \kw{empty} builtin returns the zero-initialized value for any type $\tau$.
   {\Gamma; m \vdash a.\kw{pop}() : \tau}
 \end{mathpar}
 
-The \kw{pop} method can also be used as a statement, discarding the returned element.
-The \kw{append} method is statement-only (returns $\kw{None}$).
-
 %==============================================================================
 \section{Function Typing Rules}
 %==============================================================================
 
 \subsection{Function Types}
 
-Function types include visibility and mutability:
 \[
 \sigma ::= (\tau_1, \ldots, \tau_n) \xrightarrow{v, m} \tau_r
 \]
-where $v \in \{\kw{internal}, \kw{external}, \kw{deploy}\}$ and $m \in \{\kw{pure}, \kw{view}, \kw{nonpayable}, \kw{payable}\}$.
-Functions with no return annotation have return type $\kw{None}$.
 
 \subsection{Function Definition}
 
@@ -625,11 +528,6 @@ Functions with no return annotation have return type $\kw{None}$.
   {\Gamma \vdash \kw{@}v\ \kw{@}m_f\ \kw{def}\ f(\overline{x : \tau}) \to \tau_r :
    (\overline{\tau}) \xrightarrow{v, m_f} \tau_r}
 \end{mathpar}
-
-The return type $\tau_r$ is bound in the body, allowing \textsc{T-Return} to verify
-that returned expressions match the declared type.
-Function parameters $x_i$ are added to the context with $\mu(x_i) = \kw{constant}$
-(parameters are immutable and cannot be reassigned).
 
 \subsection{Internal Function Call}
 
@@ -641,11 +539,7 @@ Function parameters $x_i$ are added to the context with $\mu(x_i) = \kw{constant
   {\Gamma; m \vdash f(\overline{e}) : \tau_f}
 \end{mathpar}
 
-When $\tau_f = \kw{None}$, the call produces $\kw{None}$ and can only be used as a statement.
-
 \subsection{External Function Calls}
-
-External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
 
 \begin{mathpar}
 \inferrule*[right=T-ExtCall]
@@ -664,19 +558,12 @@ External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
   {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) : \tau_f}
 \end{mathpar}
 
-When $\tau_f = \kw{None}$, the call produces $\kw{None}$.
-
 %==============================================================================
 \section{None-Typed Expressions (Statements)}
 \label{sec:statements}
 %==============================================================================
 
-\fbox{$\Gamma; m; \tau_r \vdash e : \kw{None}$} \quad (expression $e$ has type $\kw{None}$)
-
-\medskip
-\noindent
-Expressions of type $\kw{None}$ are traditionally called ``statements.''
-They are evaluated for side effects and produce no useful value.
+\fbox{$\Gamma; m; \tau_r \vdash e : \kw{None}$}
 
 \subsection{Method Calls}
 
@@ -687,9 +574,6 @@ They are evaluated for side effects and produce no useful value.
   {\Gamma; m \vdash a.\kw{append}(e) : \kw{None}}
 \end{mathpar}
 
-The \kw{pop} method is typed as an expression via \textsc{T-Pop}; when used as a statement,
-the returned value is discarded.
-
 \subsection{Variable Declaration}
 
 \begin{mathpar}
@@ -697,8 +581,6 @@ the returned value is discarded.
   {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\ \tau' \neq \kw{None}}
   {\Gamma; m \vdash (x : \tau = e) : \kw{None} \dashv \Gamma, x : \tau}
 \end{mathpar}
-
-The premise $\tau' \neq \kw{None}$ ensures that $\kw{None}$-typed expressions cannot be assigned.
 
 \subsection{Assignment}
 
@@ -769,12 +651,7 @@ The premise $\tau' \neq \kw{None}$ ensures that $\kw{None}$-typed expressions ca
   {\Gamma; m; \tau_r \vdash \kw{return} : \kw{None}}
 \end{mathpar}
 
-Note: A function with no return value has $\tau_r = \kw{None}$. The premise $\tau' \neq \kw{None}$
-in \textsc{T-Return} prevents returning $\kw{None}$-typed expressions.
-
 \subsection{Assert}
-
-Assert can optionally take a revert message:
 
 \begin{mathpar}
 \inferrule*[right=T-Assert]
@@ -791,9 +668,6 @@ Assert can optionally take a revert message:
 \end{mathpar}
 
 \subsection{Terminating Expressions}
-
-Expressions that never return normally have type $\kw{None}$.
-Code after these expressions is unreachable.
 
 \begin{mathpar}
 \inferrule*[right=T-Raise]
@@ -817,9 +691,6 @@ Code after these expressions is unreachable.
   {\Gamma; m \vdash \kw{continue} : \kw{None}}
 \end{mathpar}
 
-The \kw{break} and \kw{continue} statements transfer control out of the current block,
-making subsequent code unreachable.
-
 \subsection{Event Logging}
 
 \begin{mathpar}
@@ -842,24 +713,16 @@ making subsequent code unreachable.
   {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{Bytes}[n] \\
    \text{no \kw{max\_outsize} specified} \\ m \geq \kw{nonpayable}}
   {\Gamma; m \vdash \kw{raw\_call}(e_1, e_2, \ldots) : \kw{None}}
-\end{mathpar}
 
-The \kw{send} builtin accepts an optional \kw{gas} keyword argument of type \kw{uint256}.
-
-\begin{mathpar}
 \inferrule*[right=T-RawCallExpr]
   {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{Bytes}[n] \\
    \kw{max\_outsize} = k \\ m \geq \kw{nonpayable}}
   {\Gamma; m \vdash \kw{raw\_call}(e_1, e_2, \ldots, \kw{max\_outsize}=k) : \kw{Bytes}[k]}
 \end{mathpar}
 
-When \kw{max\_outsize} is specified, \kw{raw\_call} returns \kw{Bytes}[$k$].
-
 %==============================================================================
 \section{Type Conversion Rules}
 %==============================================================================
-
-The predicate $\convertible{\tau_1}{\tau_2}$ defines valid explicit conversions:
 
 \subsection{Integer Conversions}
 
@@ -954,25 +817,6 @@ The predicate $\convertible{\tau_1}{\tau_2}$ defines valid explicit conversions:
   {\ell(x) = \kw{code} \\ f\ \text{is not constructor}}
   {\mu(x) = \kw{runtime\_constant}}
 \end{mathpar}
-
-%==============================================================================
-\section{Summary}
-%==============================================================================
-
-The Vyper type system is characterized by:
-
-\begin{enumerate}
-  \item \textbf{Unified expression typing}: Statements and terminating operations
-        are expressions of type $\kw{None}$
-  \item \textbf{No implicit coercions}: Types must match exactly or through explicit subtyping
-  \item \textbf{Nominal typing}: User-defined types use identity comparison ($\equiv$)
-  \item \textbf{Structural subtyping}: Bytestrings and dynamic arrays by max length
-  \item \textbf{Effect tracking}: Function mutability ($m$) threads through all judgments
-  \item \textbf{Location tracking}: Variables have associated storage locations
-  \item \textbf{Explicit conversions}: Via \kw{convert()} with bounds checking
-  \item \textbf{Static bounds}: Integer overflow checked at compile-time where possible
-  \item \textbf{Value restriction}: $\kw{None}$ cannot be assigned or passed as arguments
-\end{enumerate}
 
 %==============================================================================
 \begin{thebibliography}{9}
