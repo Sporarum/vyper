@@ -601,9 +601,8 @@ The \kw{empty} builtin returns the zero-initialized value for any type $\tau$.
   {\Gamma; m \vdash a.\kw{pop}() : \tau}
 \end{mathpar}
 
-The \kw{pop} method can also be used as a statement (discarding the returned element);
-see \textsc{T-PopStmt} in Section~\ref{sec:statements}.
-The \kw{append} method is statement-only (it has no return value).
+The \kw{pop} method can also be used as a statement, discarding the returned element.
+The \kw{append} method is statement-only (returns $\kw{None}$).
 
 %==============================================================================
 \section{Function Typing Rules}
@@ -686,15 +685,10 @@ They are evaluated for side effects and produce no useful value.
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\
    \mu(a) = \kw{modifiable}}
   {\Gamma; m \vdash a.\kw{append}(e) : \kw{None}}
-
-\inferrule*[right=T-PopStmt]
-  {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \mu(a) = \kw{modifiable}}
-  {\Gamma; m \vdash a.\kw{pop}() : \kw{None}}
 \end{mathpar}
 
-The \kw{pop} method can be used both as an expression (returning $\tau$; see \textsc{T-Pop})
-or as a statement (discarding the result; \textsc{T-PopStmt}). Since $\tau \neq \kw{None}$
-for valid dynamic array element types, both rules are needed.
+The \kw{pop} method is typed as an expression via \textsc{T-Pop}; when used as a statement,
+the returned value is discarded.
 
 \subsection{Variable Declaration}
 
