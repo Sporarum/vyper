@@ -60,12 +60,21 @@ typing literature~\cite{dunfield2013complete}.
 \tau ::= \quad & \tau[n] && \text{Static array of length } n \\
 \mid \quad & \kw{DynArray}[\tau, n] && \text{Dynamic array (max length } n \text{)} \\
 \mid \quad & \kw{HashMap}[\kappa, \tau] && \text{Mapping from } \kappa \text{ to } \tau \\
-\mid \quad & (\tau_1, \ldots, \tau_n) && \text{Tuple} \\
+\mid \quad & (\tau_1, \ldots, \tau_n) && \text{Tuple } (n \geq 1) \\
 \mid \quad & \kw{struct}\ S && \text{User-defined struct} \\
 \mid \quad & \kw{flag}\ F && \text{User-defined flag (enum)} \\
 \mid \quad & \kw{event}\ E && \text{User-defined event} \\
 \mid \quad & \kw{interface}\ I && \text{Interface type}
 \end{align*}
+
+\subsection{Void Type}
+
+The void type represents the absence of a return value:
+\[
+\kw{void}
+\]
+The void type may \textbf{only} appear as a function return type $\tau_r$.
+In user-facing syntax, functions with no return value simply omit the return type annotation.
 
 \subsection{Type Classes}
 
@@ -116,12 +125,18 @@ We use the following judgment forms, following standard conventions~\cite{pierce
 \begin{center}
 \begin{tabular}{ll}
 $\Gamma; m \vdash e : \tau$ & Expression $e$ has type $\tau$ \\
-$\Gamma; m \vdash s \dashv \Gamma'$ & Statement $s$ transforms $\Gamma$ to $\Gamma'$ \\
+$\Gamma; m \vdash s \dashv \Gamma'$ & Statement $s$ is well-formed, transforms $\Gamma$ to $\Gamma'$ \\
 $\subtype{\tau_1}{\tau_2}$ & Type $\tau_1$ is a subtype of $\tau_2$ \\
 \end{tabular}
 \end{center}
 
 The notation $\Gamma; m \vdash \cdot$ threads the function mutability $m$ through all judgments.
+
+\paragraph{Expressions vs.\ Statements.}
+Expressions and statements are distinct syntactic categories. Expressions have types and
+produce values; statements do not have types and cannot appear in expression contexts.
+This syntactic separation prevents constructs like \texttt{return (x = 1)}---assignment
+is a statement, not an expression, so it cannot be the operand of \kw{return}.
 
 \paragraph{Output Context Convention.}
 The notation $\Gamma; m \vdash s \dashv \Gamma'$ uses $\dashv$ to indicate
@@ -554,15 +569,12 @@ Shifts are only allowed on 256-bit types:
 \subsection{Dynamic Array Methods}
 
 \begin{mathpar}
-\inferrule*[right=T-Append]
-  {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\
-   \mu(a) = \kw{modifiable}}
-  {\Gamma; m \vdash a.\kw{append}(e) : ()}
-
 \inferrule*[right=T-Pop]
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \mu(a) = \kw{modifiable}}
   {\Gamma; m \vdash a.\kw{pop}() : \tau}
 \end{mathpar}
+
+Note: \kw{append} is a statement, not an expression (see Section~\ref{sec:statements}).
 
 %==============================================================================
 \section{Function Typing Rules}
@@ -591,10 +603,13 @@ where $v \in \{\kw{internal}, \kw{external}, \kw{deploy}\}$ and $m \in \{\kw{pur
 \begin{mathpar}
 \inferrule*[right=T-InternalCall]
   {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_r) \in \Gamma \\
+   \tau_r \neq \kw{void} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m_f \leq m}
   {\Gamma; m \vdash f(\overline{e}) : \tau_r}
 \end{mathpar}
+
+Calls to void-returning internal functions are statements (Section~\ref{sec:statements}).
 
 \subsection{External Function Calls}
 
@@ -604,6 +619,7 @@ External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
 \inferrule*[right=T-ExtCall]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
    (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
+   \tau_r \neq \kw{void} \\
    m_f \geq \kw{nonpayable} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m \geq \kw{nonpayable}}
@@ -612,20 +628,52 @@ External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
 \inferrule*[right=T-StaticCall]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
    (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
+   \tau_r \neq \kw{void} \\
    m_f \in \{\kw{view}, \kw{pure}\} \\ m_f \leq m \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i}
   {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) : \tau_r}
 \end{mathpar}
 
+Calls to void-returning external functions are statements (Section~\ref{sec:statements}).
+
 %==============================================================================
 \section{Statement Typing Rules}
+\label{sec:statements}
 %==============================================================================
 
-\fbox{$\Gamma; m \vdash s \dashv \Gamma'$} \quad (statement $s$ transforms $\Gamma$ to $\Gamma'$ under mutability $m$)
+\fbox{$\Gamma; m \vdash s \dashv \Gamma'$} \quad (statement $s$ is well-formed under mutability $m$)
 
 \medskip
 \noindent
-When $\Gamma' = \Gamma$ (the statement does not extend the context), we abbreviate to $\Gamma; m \vdash s$.
+Statement judgments check well-formedness; statements do not have types.
+When a statement does not modify the context (i.e., $\Gamma' = \Gamma$),
+we abbreviate to $\Gamma; m \vdash s$ without the output context.
+
+\subsection{Void Calls and Append}
+
+Void-returning function calls and \kw{append} can only appear as statements
+(they cannot be used in expression contexts):
+
+\begin{mathpar}
+\inferrule*[right=T-Append]
+  {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\
+   \mu(a) = \kw{modifiable}}
+  {\Gamma; m \vdash a.\kw{append}(e)}
+
+\inferrule*[right=T-InternalCallVoid]
+  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \kw{void}) \in \Gamma \\
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
+   m_f \leq m}
+  {\Gamma; m \vdash f(\overline{e})}
+
+\inferrule*[right=T-ExtCallVoid]
+  {\Gamma; m \vdash e : \kw{interface}\ I \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \kw{void}) \in I \\
+   m_f \geq \kw{nonpayable} \\
+   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{extcall}\ e.f(\overline{e})}
+\end{mathpar}
 
 \subsection{Variable Declaration}
 
@@ -700,7 +748,7 @@ When $\Gamma' = \Gamma$ (the statement does not extend the context), we abbrevia
   {\Gamma; m \vdash \kw{return}\ e}
 
 \inferrule*[right=T-ReturnVoid]
-  {\tau_r = ()}
+  {\tau_r = \kw{void}}
   {\Gamma; m \vdash \kw{return}}
 \end{mathpar}
 
