@@ -125,12 +125,16 @@ We use the following judgment forms, following standard conventions~\cite{pierce
 \begin{center}
 \begin{tabular}{ll}
 $\Gamma; m \vdash e : \tau$ & Expression $e$ has type $\tau$ \\
-$\Gamma; m \vdash s \dashv \Gamma'$ & Statement $s$ is well-formed, transforms $\Gamma$ to $\Gamma'$ \\
+$\Gamma; m; \tau_r \vdash s \dashv \Gamma'$ & Statement $s$ is well-formed, transforms $\Gamma$ to $\Gamma'$ \\
 $\subtype{\tau_1}{\tau_2}$ & Type $\tau_1$ is a subtype of $\tau_2$ \\
 \end{tabular}
 \end{center}
 
-The notation $\Gamma; m \vdash \cdot$ threads the function mutability $m$ through all judgments.
+The notation threads:
+\begin{itemize}
+  \item $m$ --- the enclosing function's mutability
+  \item $\tau_r$ --- the enclosing function's return type (used by \kw{return} statements)
+\end{itemize}
 
 \paragraph{Expressions vs.\ Statements.}
 Expressions and statements are distinct syntactic categories. Expressions have types and
@@ -139,10 +143,10 @@ This syntactic separation prevents constructs like \texttt{return (x = 1)}---ass
 is a statement, not an expression, so it cannot be the operand of \kw{return}.
 
 \paragraph{Output Context Convention.}
-The notation $\Gamma; m \vdash s \dashv \Gamma'$ uses $\dashv$ to indicate
+The notation $\Gamma; m; \tau_r \vdash s \dashv \Gamma'$ uses $\dashv$ to indicate
 the \emph{output context}~\cite{dunfield2013complete}---the typing context after executing $s$.
 When a statement does not modify the context (i.e., $\Gamma' = \Gamma$), we use the
-abbreviated form $\Gamma; m \vdash s$ without the output context.
+abbreviated form $\Gamma; m; \tau_r \vdash s$ without the output context.
 
 %==============================================================================
 \section{Subtyping Rules}
@@ -566,6 +570,16 @@ Shifts are only allowed on 256-bit types:
   {\Gamma; m \vdash \kw{convert}(e, \tau_2) : \tau_2}
 \end{mathpar}
 
+\subsection{Zero Initialization}
+
+\begin{mathpar}
+\inferrule*[right=T-Empty]
+  { }
+  {\Gamma; m \vdash \kw{empty}(\tau) : \tau}
+\end{mathpar}
+
+The \kw{empty} builtin returns the zero-initialized value for any type $\tau$.
+
 \subsection{Dynamic Array Methods}
 
 \begin{mathpar}
@@ -592,11 +606,15 @@ where $v \in \{\kw{internal}, \kw{external}, \kw{deploy}\}$ and $m \in \{\kw{pur
 
 \begin{mathpar}
 \inferrule*[right=T-FunDef]
-  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n; m_f \vdash \mathit{body} \\
-   \text{returns}(\mathit{body}, \tau_r)}
+  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n; m_f; \tau_r \vdash \mathit{body}}
   {\Gamma \vdash \kw{@}v\ \kw{@}m_f\ \kw{def}\ f(\overline{x : \tau}) \to \tau_r :
    (\overline{\tau}) \xrightarrow{v, m_f} \tau_r}
 \end{mathpar}
+
+The return type $\tau_r$ is bound in the body's statement judgment, allowing
+\textsc{T-Return} to verify that returned expressions match the declared type.
+Function parameters $x_i$ are added to the context with $\mu(x_i) = \kw{constant}$
+(parameters are immutable and cannot be reassigned).
 
 \subsection{Internal Function Call}
 
@@ -641,13 +659,14 @@ Calls to void-returning external functions are statements (Section~\ref{sec:stat
 \label{sec:statements}
 %==============================================================================
 
-\fbox{$\Gamma; m \vdash s \dashv \Gamma'$} \quad (statement $s$ is well-formed under mutability $m$)
+\fbox{$\Gamma; m; \tau_r \vdash s \dashv \Gamma'$} \quad (statement $s$ is well-formed under mutability $m$ with return type $\tau_r$)
 
 \medskip
 \noindent
 Statement judgments check well-formedness; statements do not have types.
+The return type $\tau_r$ is threaded through to validate \kw{return} statements.
 When a statement does not modify the context (i.e., $\Gamma' = \Gamma$),
-we abbreviate to $\Gamma; m \vdash s$ without the output context.
+we abbreviate to $\Gamma; m; \tau_r \vdash s$ without the output context.
 
 \subsection{Void Calls and Append}
 
@@ -658,13 +677,13 @@ Void-returning function calls and \kw{append} can only appear as statements
 \inferrule*[right=T-Append]
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\
    \mu(a) = \kw{modifiable}}
-  {\Gamma; m \vdash a.\kw{append}(e)}
+  {\Gamma; m; \tau_r \vdash a.\kw{append}(e)}
 
 \inferrule*[right=T-InternalCallVoid]
   {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \kw{void}) \in \Gamma \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m_f \leq m}
-  {\Gamma; m \vdash f(\overline{e})}
+  {\Gamma; m; \tau_r \vdash f(\overline{e})}
 
 \inferrule*[right=T-ExtCallVoid]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
@@ -672,7 +691,7 @@ Void-returning function calls and \kw{append} can only appear as statements
    m_f \geq \kw{nonpayable} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash \kw{extcall}\ e.f(\overline{e})}
+  {\Gamma; m; \tau_r \vdash \kw{extcall}\ e.f(\overline{e})}
 \end{mathpar}
 
 \subsection{Variable Declaration}
@@ -680,7 +699,7 @@ Void-returning function calls and \kw{append} can only appear as statements
 \begin{mathpar}
 \inferrule*[right=T-VarDecl]
   {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau}}
-  {\Gamma; m \vdash (x : \tau = e) \dashv \Gamma, x : \tau}
+  {\Gamma; m; \tau_r \vdash (x : \tau = e) \dashv \Gamma, x : \tau}
 \end{mathpar}
 
 \subsection{Assignment}
@@ -690,14 +709,14 @@ Void-returning function calls and \kw{append} can only appear as statements
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau' \\
    \subtype{\tau'}{\tau} \\ \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash x = e}
+  {\Gamma; m; \tau_r \vdash x = e}
 
 \inferrule*[right=T-AugAssign]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau \\ \tau \in \mathit{NumericT} \\
    \oplus \in \{+, -, *, /\!/, \%, \kw{**}\} \\
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash x\ \oplus\!\!= \ e}
+  {\Gamma; m; \tau_r \vdash x\ \oplus\!\!= \ e}
 
 \inferrule*[right=T-AugAssignBit]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau \\
@@ -705,14 +724,14 @@ Void-returning function calls and \kw{append} can only appear as statements
    \odot \in \{\&, |, \wedge\} \\
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash x\ \odot\!\!= \ e}
+  {\Gamma; m; \tau_r \vdash x\ \odot\!\!= \ e}
 
 \inferrule*[right=T-AugAssignShift]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau' \\ \tau' \in \mathit{IntegerT} \\
    \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\} \\ \diamond \in \{\ll, \gg\} \\
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash x\ \diamond\!\!= \ e}
+  {\Gamma; m; \tau_r \vdash x\ \diamond\!\!= \ e}
 \end{mathpar}
 
 \subsection{Control Flow}
@@ -720,24 +739,24 @@ Void-returning function calls and \kw{append} can only appear as statements
 \begin{mathpar}
 \inferrule*[right=T-If]
   {\Gamma; m \vdash e : \kw{bool} \\
-   \Gamma; m \vdash s_1 \\
-   \Gamma; m \vdash s_2}
-  {\Gamma; m \vdash \kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2}
+   \Gamma; m; \tau_r \vdash s_1 \\
+   \Gamma; m; \tau_r \vdash s_2}
+  {\Gamma; m; \tau_r \vdash \kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2}
 
 \inferrule*[right=T-ForRange]
   {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\ \tau \in \mathit{IntegerT} \\
-   \Gamma, i : \tau; m \vdash s}
-  {\Gamma; m \vdash \kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s}
+   \Gamma, i : \tau; m; \tau_r \vdash s}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s}
 
 \inferrule*[right=T-ForSArray]
   {\Gamma; m \vdash a : \tau[n] \\
-   \Gamma, x : \tau; m \vdash s}
-  {\Gamma; m \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}
+   \Gamma, x : \tau; m; \tau_r \vdash s}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}
 
 \inferrule*[right=T-ForDArray]
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\
-   \Gamma, x : \tau; m \vdash s}
-  {\Gamma; m \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}
+   \Gamma, x : \tau; m; \tau_r \vdash s}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}
 \end{mathpar}
 
 \subsection{Return}
@@ -745,11 +764,11 @@ Void-returning function calls and \kw{append} can only appear as statements
 \begin{mathpar}
 \inferrule*[right=T-Return]
   {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau_r}}
-  {\Gamma; m \vdash \kw{return}\ e}
+  {\Gamma; m; \tau_r \vdash \kw{return}\ e}
 
 \inferrule*[right=T-ReturnVoid]
-  {\tau_r = \kw{void}}
-  {\Gamma; m \vdash \kw{return}}
+  { }
+  {\Gamma; m; \kw{void} \vdash \kw{return}}
 \end{mathpar}
 
 \subsection{Assert}
@@ -759,15 +778,15 @@ Assert can optionally take a revert message:
 \begin{mathpar}
 \inferrule*[right=T-Assert]
   {\Gamma; m \vdash e : \kw{bool}}
-  {\Gamma; m \vdash \kw{assert}\ e}
+  {\Gamma; m; \tau_r \vdash \kw{assert}\ e}
 
 \inferrule*[right=T-AssertMsg]
   {\Gamma; m \vdash e : \kw{bool} \\ \Gamma; m \vdash \mathit{msg} : \kw{String}[n] \\ n \leq 1024}
-  {\Gamma; m \vdash \kw{assert}\ e,\ \mathit{msg}}
+  {\Gamma; m; \tau_r \vdash \kw{assert}\ e,\ \mathit{msg}}
 
 \inferrule*[right=T-AssertUnreach]
   {\Gamma; m \vdash e : \kw{bool}}
-  {\Gamma; m \vdash \kw{assert}\ e,\ \kw{UNREACHABLE}}
+  {\Gamma; m; \tau_r \vdash \kw{assert}\ e,\ \kw{UNREACHABLE}}
 \end{mathpar}
 
 \subsection{Raise}
@@ -775,11 +794,11 @@ Assert can optionally take a revert message:
 \begin{mathpar}
 \inferrule*[right=T-Raise]
   {\Gamma; m \vdash e : \kw{String}[n] \\ n \leq 1024}
-  {\Gamma; m \vdash \kw{raise}\ e}
+  {\Gamma; m; \tau_r \vdash \kw{raise}\ e}
 
 \inferrule*[right=T-RaiseUnreach]
   { }
-  {\Gamma; m \vdash \kw{raise}\ \kw{UNREACHABLE}}
+  {\Gamma; m; \tau_r \vdash \kw{raise}\ \kw{UNREACHABLE}}
 \end{mathpar}
 
 \subsection{Event Logging}
@@ -789,8 +808,23 @@ Assert can optionally take a revert message:
   {\kw{event}\ E = \{a_1 : \tau_1, \ldots, a_n : \tau_n\} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n)}
+  {\Gamma; m; \tau_r \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n)}
 \end{mathpar}
+
+\subsection{Ether Transfer}
+
+\begin{mathpar}
+\inferrule*[right=T-Send]
+  {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{uint256} \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m; \tau_r \vdash \kw{send}(e_1, e_2)}
+
+\inferrule*[right=T-Selfdestruct]
+  {\Gamma; m \vdash e : \kw{address} \\ m \geq \kw{nonpayable}}
+  {\Gamma; m; \tau_r \vdash \kw{selfdestruct}(e)}
+\end{mathpar}
+
+These are statements (not expressions) and cannot be used to obtain a value.
 
 %==============================================================================
 \section{Type Conversion Rules}
