@@ -588,7 +588,9 @@ The \kw{empty} builtin returns the zero-initialized value for any type $\tau$.
   {\Gamma; m \vdash a.\kw{pop}() : \tau}
 \end{mathpar}
 
-Note: \kw{append} is a statement, not an expression (see Section~\ref{sec:statements}).
+The \kw{pop} method can also be used as a statement (discarding the returned element);
+see \textsc{T-PopStmt} in Section~\ref{sec:statements}.
+The \kw{append} method is statement-only (it has no return value).
 
 %==============================================================================
 \section{Function Typing Rules}
@@ -668,10 +670,13 @@ The return type $\tau_r$ is threaded through to validate \kw{return} statements.
 When a statement does not modify the context (i.e., $\Gamma' = \Gamma$),
 we abbreviate to $\Gamma; m; \tau_r \vdash s$ without the output context.
 
-\subsection{Void Calls and Append}
+\subsection{Expression Statements}
 
-Void-returning function calls and \kw{append} can only appear as statements
-(they cannot be used in expression contexts):
+Only function calls can appear as standalone statements. Other expressions
+(e.g., \texttt{1 + 2}, \kw{empty(uint256)}) are rejected with
+``Expressions without assignment are disallowed.''
+
+Function calls and method calls may discard their return values when used as statements:
 
 \begin{mathpar}
 \inferrule*[right=T-Append]
@@ -679,20 +684,32 @@ Void-returning function calls and \kw{append} can only appear as statements
    \mu(a) = \kw{modifiable}}
   {\Gamma; m; \tau_r \vdash a.\kw{append}(e)}
 
-\inferrule*[right=T-InternalCallVoid]
-  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \kw{void}) \in \Gamma \\
+\inferrule*[right=T-PopStmt]
+  {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \mu(a) = \kw{modifiable}}
+  {\Gamma; m; \tau_r \vdash a.\kw{pop}()}
+
+\inferrule*[right=T-InternalCallStmt]
+  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_f) \in \Gamma \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m_f \leq m}
   {\Gamma; m; \tau_r \vdash f(\overline{e})}
 
-\inferrule*[right=T-ExtCallVoid]
+\inferrule*[right=T-ExtCallStmt]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
-   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \kw{void}) \in I \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_f) \in I \\
    m_f \geq \kw{nonpayable} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m \geq \kw{nonpayable}}
   {\Gamma; m; \tau_r \vdash \kw{extcall}\ e.f(\overline{e})}
+
 \end{mathpar}
+
+Note: The return value $\tau_f$ (which may be $\kw{void}$ or any other type) is discarded.
+These statement forms allow calling functions for their side effects only.
+
+\textbf{Important:} Standalone \kw{staticcall} statements are \textbf{banned} in Vyper.
+Since \kw{staticcall} invokes pure/view functions (which have no side effects),
+discarding their result would be pointless. The result must be assigned or used.
 
 \subsection{Variable Declaration}
 
@@ -811,7 +828,7 @@ Assert can optionally take a revert message:
   {\Gamma; m; \tau_r \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n)}
 \end{mathpar}
 
-\subsection{Ether Transfer}
+\subsection{Ether Transfer and Low-Level Calls}
 
 \begin{mathpar}
 \inferrule*[right=T-Send]
@@ -822,9 +839,17 @@ Assert can optionally take a revert message:
 \inferrule*[right=T-Selfdestruct]
   {\Gamma; m \vdash e : \kw{address} \\ m \geq \kw{nonpayable}}
   {\Gamma; m; \tau_r \vdash \kw{selfdestruct}(e)}
+
+\inferrule*[right=T-RawCallStmt]
+  {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{Bytes}[n] \\
+   \text{no \kw{max\_outsize} specified} \\ m \geq \kw{nonpayable}}
+  {\Gamma; m; \tau_r \vdash \kw{raw\_call}(e_1, e_2, \ldots)}
 \end{mathpar}
 
 These are statements (not expressions) and cannot be used to obtain a value.
+The \kw{send} builtin accepts an optional \kw{gas} keyword argument of type \kw{uint256}.
+The \kw{raw\_call} builtin becomes an expression when \kw{max\_outsize} is specified,
+returning \kw{Bytes}[$n$] where $n$ is the specified max output size.
 
 %==============================================================================
 \section{Type Conversion Rules}
