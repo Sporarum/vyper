@@ -432,6 +432,11 @@ class AddressT(_PrimT):
                 node,
             )
 
+    def compare_type(self, other: VyperType) -> bool:
+        # Make interfaces subtypes of addresses
+        # isinstance causes circular import issues
+        return super().compare_type(other) or other.typeclass == "interface"
+
 
 # type for "self"
 # refactoring note: it might be best for this to be a ModuleT actually
