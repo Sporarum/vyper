@@ -1,0 +1,705 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{mathpartir}
+\usepackage{stmaryrd}
+\usepackage{xcolor}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{booktabs}
+
+\geometry{margin=1in}
+
+\title{Vyper Bidirectional Typing Rules}
+\author{Based on the Pfenning Recipe from Dunfield \& Krishnaswami}
+\date{}
+
+\newcommand{\kw}[1]{\texttt{#1}}
+\newcommand{\typerule}[1]{\textsc{#1}}
+\newcommand{\subtype}[2]{#1 <: #2}
+\newcommand{\validelem}[1]{\mathsf{ValidElem}(#1)}
+\newcommand{\validdarray}[1]{\mathsf{ValidDArray}(#1)}
+\newcommand{\validkey}[1]{\mathsf{ValidKey}(#1)}
+\newcommand{\convertible}[2]{\mathsf{Convertible}(#1, #2)}
+\newcommand{\checks}{\Leftarrow}
+\newcommand{\synth}{\Rightarrow}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Bidirectional typing rules for Vyper, derived from the type assignment rules
+by applying the Pfenning recipe. This formulation separates typing into two
+modes: \emph{checking} ($\checks$), where the type is known and verified, and
+\emph{synthesis} ($\synth$), where the type is computed from the term structure.
+Following the recipe: introduction forms check, elimination forms synthesize,
+and a subsumption rule bridges the two modes.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+%==============================================================================
+\section{Bidirectional Judgment Forms}
+%==============================================================================
+
+\subsection{Notation}
+
+We use two principal judgment forms for expressions:
+
+\begin{center}
+\begin{tabular}{ll}
+$\Gamma; m \vdash e \checks \tau$ & Expression $e$ \emph{checks against} type $\tau$ \\
+$\Gamma; m \vdash e \synth \tau$ & Expression $e$ \emph{synthesizes} type $\tau$ \\
+\end{tabular}
+\end{center}
+
+For statements (which always have type \kw{None} and may extend the context):
+
+\begin{center}
+\begin{tabular}{ll}
+$\Gamma; m; \tau_r \vdash s \checks \kw{None}$ & Statement $s$ checks against \kw{None} \\
+$\Gamma; m; \tau_r \vdash s \checks \kw{None} \dashv \Gamma'$ & Statement $s$ extends context to $\Gamma'$ \\
+\end{tabular}
+\end{center}
+
+\subsection{Mode Interpretation}
+
+\begin{itemize}
+\item \textbf{Checking ($\checks$)}: The type $\tau$ is an \emph{input}. We verify that $e$ has this type.
+\item \textbf{Synthesis ($\synth$)}: The type $\tau$ is an \emph{output}. We compute the type from $e$.
+\end{itemize}
+
+\subsection{The Pfenning Recipe}
+
+The bidirectionalization follows these principles:
+
+\begin{enumerate}
+\item \textbf{Introduction forms check}: Literals, constructors, and $\lambda$-like forms
+      have checking conclusions.
+\item \textbf{Elimination forms synthesize}: Operations, subscripts, and function applications
+      have synthesizing principal judgments.
+\item \textbf{Variables synthesize}: The type is looked up from the context.
+\item \textbf{Subsumption bridges modes}: When checking but only synthesis is available,
+      we synthesize and verify subtyping.
+\end{enumerate}
+
+%==============================================================================
+\section{Structural Rules}
+%==============================================================================
+
+\fbox{$\Gamma; m \vdash e \synth \tau$} \quad (Synthesis)
+\hspace{1cm}
+\fbox{$\Gamma; m \vdash e \checks \tau$} \quad (Checking)
+
+\subsection{Variable Rule}
+
+Variables synthesize their type from the context:
+
+\begin{mathpar}
+\inferrule*[right=Var$\synth$]
+  {(x : \tau) \in \Gamma}
+  {\Gamma; m \vdash x \synth \tau}
+\end{mathpar}
+
+\subsection{Subsumption Rule}
+
+To check an expression against a type, synthesize and verify subtyping:
+
+\begin{mathpar}
+\inferrule*[right=Sub$\checks$]
+  {\Gamma; m \vdash e \synth \tau_1 \\ \subtype{\tau_1}{\tau_2}}
+  {\Gamma; m \vdash e \checks \tau_2}
+\end{mathpar}
+
+\paragraph{Note.} This rule is applied when no direct checking rule matches.
+It enables expressions that can only synthesize (variables, eliminations)
+to be used in checking positions.
+
+%==============================================================================
+\section{Literals (Introduction Forms)}
+%==============================================================================
+
+Following the recipe, all introduction forms \textbf{check}. Literals are
+canonical introductions for their respective types.
+
+\subsection{Boolean Literals}
+
+\begin{mathpar}
+\inferrule*[right=True$\checks$]
+  { }
+  {\Gamma; m \vdash \kw{True} \checks \kw{bool}}
+
+\inferrule*[right=False$\checks$]
+  { }
+  {\Gamma; m \vdash \kw{False} \checks \kw{bool}}
+\end{mathpar}
+
+\subsection{Numeric Literals}
+
+\begin{mathpar}
+\inferrule*[right=IntLit$\checks$]
+  {-2^{N-1} \leq n \leq 2^{N-1} - 1}
+  {\Gamma; m \vdash n \checks \kw{int}N}
+
+\inferrule*[right=UintLit$\checks$]
+  {0 \leq n \leq 2^N - 1}
+  {\Gamma; m \vdash n \checks \kw{uint}N}
+
+\inferrule*[right=DecLit$\checks$]
+  {-2^{167}/10^{10} \leq d \leq (2^{167}-1)/10^{10}}
+  {\Gamma; m \vdash d \checks \kw{decimal}}
+\end{mathpar}
+
+\subsection{Address and Bytes Literals}
+
+\begin{mathpar}
+\inferrule*[right=Addr$\checks$]
+  {\text{checksummed}(a)}
+  {\Gamma; m \vdash \kw{0x}a \checks \kw{address}}
+
+\inferrule*[right=BytesM$\checks$]
+  {|\mathit{hex}| = M \\ 1 \leq M \leq 32}
+  {\Gamma; m \vdash \kw{0x}\mathit{hex} \checks \kw{bytes}M}
+
+\inferrule*[right=BytesLit$\checks$]
+  {|s| \leq n}
+  {\Gamma; m \vdash \kw{b"}s\kw{"} \checks \kw{Bytes}[n]}
+
+\inferrule*[right=StrLit$\checks$]
+  {|s| \leq n}
+  {\Gamma; m \vdash \kw{"}s\kw{"} \checks \kw{String}[n]}
+\end{mathpar}
+
+%==============================================================================
+\section{State and Environment Access}
+%==============================================================================
+
+State and environment variables \textbf{synthesize} because their types
+are determined by the context or are fixed by the language.
+
+\subsection{State Variables}
+
+\begin{mathpar}
+\inferrule*[right=StateRead$\synth$]
+  {(x : \tau) \in \Gamma \\ \ell(x) \in \{\kw{storage}, \kw{transient}\} \\ m \neq \kw{pure}}
+  {\Gamma; m \vdash x \synth \tau}
+\end{mathpar}
+
+\subsection{Message Context}
+
+\begin{mathpar}
+\inferrule*[right=MsgValue$\synth$]
+  {m = \kw{payable}}
+  {\Gamma; m \vdash \kw{msg.value} \synth \kw{uint256}}
+\end{mathpar}
+
+\subsection{Block and Transaction Environment}
+
+All environment variables synthesize their fixed types:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Variable} & \textbf{Synthesizes} & \textbf{Variable} & \textbf{Synthesizes} \\
+\midrule
+\kw{block.coinbase} & \kw{address} & \kw{msg.sender} & \kw{address} \\
+\kw{block.number} & \kw{uint256} & \kw{msg.gas} / \kw{msg.mana} & \kw{uint256} \\
+\kw{block.timestamp} & \kw{uint256} & \kw{msg.data} & \kw{Bytes} \\
+\kw{block.difficulty} & \kw{uint256} & \kw{tx.origin} & \kw{address} \\
+\kw{block.prevrandao} & \kw{bytes32} & \kw{tx.gasprice} & \kw{uint256} \\
+\kw{block.gaslimit} & \kw{uint256} & \kw{chain.id} & \kw{uint256} \\
+\kw{block.basefee} & \kw{uint256} & & \\
+\kw{block.blobbasefee} & \kw{uint256} & & \\
+\kw{block.prevhash} & \kw{bytes32} & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==============================================================================
+\section{Operations (Elimination Forms)}
+%==============================================================================
+
+Following the recipe, operations \textbf{synthesize} their result type.
+Operands are \textbf{checked} against the required type when known.
+
+\subsection{Boolean Operations}
+
+\begin{mathpar}
+\inferrule*[right=And$\synth$]
+  {\Gamma; m \vdash e_1 \checks \kw{bool} \\ \Gamma; m \vdash e_2 \checks \kw{bool}}
+  {\Gamma; m \vdash e_1\ \kw{and}\ e_2 \synth \kw{bool}}
+
+\inferrule*[right=Or$\synth$]
+  {\Gamma; m \vdash e_1 \checks \kw{bool} \\ \Gamma; m \vdash e_2 \checks \kw{bool}}
+  {\Gamma; m \vdash e_1\ \kw{or}\ e_2 \synth \kw{bool}}
+
+\inferrule*[right=Not$\synth$]
+  {\Gamma; m \vdash e \checks \kw{bool}}
+  {\Gamma; m \vdash \kw{not}\ e \synth \kw{bool}}
+\end{mathpar}
+
+\subsection{Arithmetic Operations}
+
+For binary arithmetic, we synthesize the first operand to determine the type,
+then check the second operand against it:
+
+\begin{mathpar}
+\inferrule*[right=BinArith$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau \\
+   \tau \in \mathit{NumericT} \\ \oplus \in \{+, -, *, /\!/, \%\}}
+  {\Gamma; m \vdash e_1 \oplus e_2 \synth \tau}
+
+\inferrule*[right=DecDiv$\synth$]
+  {\Gamma; m \vdash e_1 \checks \kw{decimal} \\ \Gamma; m \vdash e_2 \checks \kw{decimal}}
+  {\Gamma; m \vdash e_1\ /\ e_2 \synth \kw{decimal}}
+
+\inferrule*[right=Neg$\synth$]
+  {\Gamma; m \vdash e \synth \tau \\ \tau \in \mathit{SignedT}}
+  {\Gamma; m \vdash -e \synth \tau}
+\end{mathpar}
+
+\subsection{Exponentiation}
+
+\begin{mathpar}
+\inferrule*[right=Pow$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau \\
+   \tau \in \mathit{IntegerT} \\ \mu(e_1) = \kw{constant} \lor \mu(e_2) = \kw{constant}}
+  {\Gamma; m \vdash e_1\ \kw{**}\ e_2 \synth \tau}
+\end{mathpar}
+
+\subsection{Bitwise Operations}
+
+\begin{mathpar}
+\inferrule*[right=BitBin$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau \\
+   \tau \in \mathit{IntegerT} \cup \{\kw{bytes}M, \kw{flag}\ F\} \\ \odot \in \{\&, |, \wedge\}}
+  {\Gamma; m \vdash e_1\ \odot\ e_2 \synth \tau}
+
+\inferrule*[right=BitNot$\synth$]
+  {\Gamma; m \vdash e \synth \tau \\ \tau \in \{\kw{uint256}, \kw{bytes32}, \kw{flag}\ F\}}
+  {\Gamma; m \vdash \mathord{\sim} e \synth \tau}
+\end{mathpar}
+
+\subsection{Shift Operations}
+
+\begin{mathpar}
+\inferrule*[right=Shift$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \synth \tau' \\ \tau' \in \mathit{IntegerT} \\
+   \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\} \\ \diamond \in \{\ll, \gg\}}
+  {\Gamma; m \vdash e_1\ \diamond\ e_2 \synth \tau}
+\end{mathpar}
+
+\subsection{Comparisons}
+
+Comparisons synthesize \kw{bool}:
+
+\begin{mathpar}
+\inferrule*[right=NumCmp$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau \\
+   \tau \in \mathit{NumericT} \\ \bowtie\ \in \{<, \leq, >, \geq\}}
+  {\Gamma; m \vdash e_1\ \bowtie\ e_2 \synth \kw{bool}}
+
+\inferrule*[right=Eq$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau}
+  {\Gamma; m \vdash e_1 == e_2 \synth \kw{bool}}
+
+\inferrule*[right=NEq$\synth$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau}
+  {\Gamma; m \vdash e_1\ !=\ e_2 \synth \kw{bool}}
+\end{mathpar}
+
+\subsection{Membership Tests}
+
+\begin{mathpar}
+\inferrule*[right=InSArray$\synth$]
+  {\Gamma; m \vdash a \synth \tau[n] \\ \Gamma; m \vdash e \checks \tau}
+  {\Gamma; m \vdash e\ \kw{in}\ a \synth \kw{bool}}
+
+\inferrule*[right=InDArray$\synth$]
+  {\Gamma; m \vdash a \synth \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e \checks \tau}
+  {\Gamma; m \vdash e\ \kw{in}\ a \synth \kw{bool}}
+
+\inferrule*[right=InFlag$\synth$]
+  {\Gamma; m \vdash f \synth \kw{flag}\ F \\ \Gamma; m \vdash e \checks \kw{flag}\ F}
+  {\Gamma; m \vdash e\ \kw{in}\ f \synth \kw{bool}}
+\end{mathpar}
+
+%==============================================================================
+\section{Subscript and Attribute Access}
+%==============================================================================
+
+These are elimination forms and thus \textbf{synthesize}.
+
+\subsection{Subscript Access}
+
+\begin{mathpar}
+\inferrule*[right=SArrayIdx$\synth$]
+  {\Gamma; m \vdash e \synth \tau[n] \\ \Gamma; m \vdash i \synth \tau_i \\ \tau_i \in \mathit{IntegerT} \\
+   \mu(i) = \kw{constant} \Rightarrow 0 \leq i < n}
+  {\Gamma; m \vdash e[i] \synth \tau}
+
+\inferrule*[right=DArrayIdx$\synth$]
+  {\Gamma; m \vdash e \synth \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash i \synth \tau_i \\ \tau_i \in \mathit{IntegerT}}
+  {\Gamma; m \vdash e[i] \synth \tau}
+
+\inferrule*[right=MapIdx$\synth$]
+  {\Gamma; m \vdash h \synth \kw{HashMap}[\kappa, \tau] \\ \Gamma; m \vdash k \checks \kappa}
+  {\Gamma; m \vdash h[k] \synth \tau}
+
+\inferrule*[right=TupleIdx$\synth$]
+  {\Gamma; m \vdash t \synth (\tau_0, \ldots, \tau_{n-1}) \\ 0 \leq i < n \\ \mu(i) = \kw{constant}}
+  {\Gamma; m \vdash t[i] \synth \tau_i}
+\end{mathpar}
+
+\subsection{Attribute Access}
+
+\begin{mathpar}
+\inferrule*[right=StructAttr$\synth$]
+  {\Gamma; m \vdash e \synth \kw{struct}\ S \\ (f : \tau) \in S}
+  {\Gamma; m \vdash e.f \synth \tau}
+
+\inferrule*[right=AddrAttr$\synth$]
+  {\Gamma; m \vdash e \synth \kw{address} \\ m \neq \kw{pure} \\
+   (a, \tau_a) \in \{(\kw{balance}, \kw{uint256}), (\kw{codesize}, \kw{uint256}),
+           (\kw{codehash}, \kw{bytes32}), (\kw{is\_contract}, \kw{bool})\}}
+  {\Gamma; m \vdash e.a \synth \tau_a}
+\end{mathpar}
+
+%==============================================================================
+\section{Composite Literals (Introduction Forms)}
+%==============================================================================
+
+Composite literals are introduction forms and thus \textbf{check}.
+
+\begin{mathpar}
+\inferrule*[right=ArrayLit$\checks$]
+  {\Gamma; m \vdash e_i \checks \tau \text{ for all } i \in 1..n}
+  {\Gamma; m \vdash [e_1, \ldots, e_n] \checks \tau[n]}
+
+\inferrule*[right=Tuple$\checks$]
+  {\Gamma; m \vdash e_i \checks \tau_i \text{ for all } i \in 1..n}
+  {\Gamma; m \vdash (e_1, \ldots, e_n) \checks (\tau_1, \ldots, \tau_n)}
+
+\inferrule*[right=StructCtor$\checks$]
+  {\kw{struct}\ S = \{f_1 : \tau_1, \ldots, f_n : \tau_n\} \\
+   \Gamma; m \vdash e_i \checks \tau_i \text{ for all } i}
+  {\Gamma; m \vdash S(f_1 = e_1, \ldots, f_n = e_n) \checks \kw{struct}\ S}
+\end{mathpar}
+
+%==============================================================================
+\section{Conditional Expression}
+%==============================================================================
+
+The conditional expression has both checking and synthesis variants.
+
+\subsection{Checking Variant}
+
+When a goal type is known, both branches check against it:
+
+\begin{mathpar}
+\inferrule*[right=IfExp$\checks$]
+  {\Gamma; m \vdash e_c \checks \kw{bool} \\ \Gamma; m \vdash e_1 \checks \tau \\ \Gamma; m \vdash e_2 \checks \tau}
+  {\Gamma; m \vdash e_1\ \kw{if}\ e_c\ \kw{else}\ e_2 \checks \tau}
+\end{mathpar}
+
+\subsection{Synthesis Variant}
+
+When no goal type is known, branches must synthesize the same type:
+
+\begin{mathpar}
+\inferrule*[right=IfExp$\synth$]
+  {\Gamma; m \vdash e_c \checks \kw{bool} \\ \Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau}
+  {\Gamma; m \vdash e_1\ \kw{if}\ e_c\ \kw{else}\ e_2 \synth \tau}
+\end{mathpar}
+
+%==============================================================================
+\section{Type Conversion and Zero Initialization}
+%==============================================================================
+
+These operations have explicit type annotations and thus \textbf{synthesize}.
+
+\begin{mathpar}
+\inferrule*[right=Convert$\synth$]
+  {\Gamma; m \vdash e \synth \tau_1 \\ \convertible{\tau_1}{\tau_2}}
+  {\Gamma; m \vdash \kw{convert}(e, \tau_2) \synth \tau_2}
+
+\inferrule*[right=Empty$\synth$]
+  { }
+  {\Gamma; m \vdash \kw{empty}(\tau) \synth \tau}
+\end{mathpar}
+
+%==============================================================================
+\section{Function Calls}
+%==============================================================================
+
+Function calls are elimination forms and \textbf{synthesize} the return type.
+Arguments are \textbf{checked} against the expected parameter types.
+
+\subsection{Internal Function Calls}
+
+\begin{mathpar}
+\inferrule*[right=InternalCall$\synth$]
+  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_f) \in \Gamma \\
+   \Gamma; m \vdash e_i \checks \tau_i \text{ for all } i \\
+   m_f \leq m}
+  {\Gamma; m \vdash f(\overline{e}) \synth \tau_f}
+\end{mathpar}
+
+\subsection{External Function Calls}
+
+\begin{mathpar}
+\inferrule*[right=ExtCall$\synth$]
+  {\Gamma; m \vdash e \synth \kw{interface}\ I \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_f) \in I \\
+   m_f \geq \kw{nonpayable} \\
+   \Gamma; m \vdash e_i \checks \tau_i \text{ for all } i \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{extcall}\ e.f(\overline{e}) \synth \tau_f}
+
+\inferrule*[right=StaticCall$\synth$]
+  {\Gamma; m \vdash e \synth \kw{interface}\ I \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_f) \in I \\
+   m_f \in \{\kw{view}, \kw{pure}\} \\ m_f \leq m \\
+   \Gamma; m \vdash e_i \checks \tau_i \text{ for all } i}
+  {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) \synth \tau_f}
+\end{mathpar}
+
+%==============================================================================
+\section{Dynamic Array Methods}
+%==============================================================================
+
+\begin{mathpar}
+\inferrule*[right=Pop$\synth$]
+  {\Gamma; m \vdash a \synth \kw{DynArray}[\tau, n] \\ \mu(a) = \kw{modifiable}}
+  {\Gamma; m \vdash a.\kw{pop}() \synth \tau}
+\end{mathpar}
+
+%==============================================================================
+\section{Statements}
+\label{sec:statements}
+%==============================================================================
+
+All statements \textbf{check against \kw{None}}. Some statements extend the
+typing context.
+
+\fbox{$\Gamma; m; \tau_r \vdash s \checks \kw{None}$}
+\hspace{0.5cm}
+\fbox{$\Gamma; m; \tau_r \vdash s \checks \kw{None} \dashv \Gamma'$}
+
+\subsection{Method Calls as Statements}
+
+\begin{mathpar}
+\inferrule*[right=Append$\checks$]
+  {\Gamma; m \vdash a \synth \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e \checks \tau \\
+   \mu(a) = \kw{modifiable}}
+  {\Gamma; m \vdash a.\kw{append}(e) \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Variable Declaration}
+
+Variable declarations extend the context:
+
+\begin{mathpar}
+\inferrule*[right=VarDecl$\checks$]
+  {\Gamma; m \vdash e \checks \tau}
+  {\Gamma; m \vdash (x : \tau = e) \checks \kw{None} \dashv \Gamma, x : \tau}
+\end{mathpar}
+
+\subsection{Assignment}
+
+\begin{mathpar}
+\inferrule*[right=Assign$\checks$]
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e \checks \tau \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash x = e \checks \kw{None}}
+
+\inferrule*[right=AugAssign$\checks$]
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e \checks \tau \\ \tau \in \mathit{NumericT} \\
+   \oplus \in \{+, -, *, /\!/, \%, \kw{**}\} \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash x\ \oplus\!\!= \ e \checks \kw{None}}
+
+\inferrule*[right=AugAssignBit$\checks$]
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e \checks \tau \\
+   \tau \in \mathit{IntegerT} \cup \{\kw{bytes}M, \kw{flag}\ F\} \\
+   \odot \in \{\&, |, \wedge\} \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash x\ \odot\!\!= \ e \checks \kw{None}}
+
+\inferrule*[right=AugAssignShift$\checks$]
+  {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e \synth \tau' \\ \tau' \in \mathit{IntegerT} \\
+   \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\} \\ \diamond \in \{\ll, \gg\} \\
+   \mu(x) = \kw{modifiable} \\
+   \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash x\ \diamond\!\!= \ e \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Control Flow}
+
+\begin{mathpar}
+\inferrule*[right=If$\checks$]
+  {\Gamma; m \vdash e \checks \kw{bool} \\
+   \Gamma; m; \tau_r \vdash s_1 \checks \kw{None} \\
+   \Gamma; m; \tau_r \vdash s_2 \checks \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2 \checks \kw{None}}
+
+\inferrule*[right=ForRange$\checks$]
+  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau \\ \tau \in \mathit{IntegerT} \\
+   \Gamma, i : \tau; m; \tau_r \vdash s \checks \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s \checks \kw{None}}
+
+\inferrule*[right=ForSArray$\checks$]
+  {\Gamma; m \vdash a \synth \tau[n] \\
+   \Gamma, x : \tau; m; \tau_r \vdash s \checks \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s \checks \kw{None}}
+
+\inferrule*[right=ForDArray$\checks$]
+  {\Gamma; m \vdash a \synth \kw{DynArray}[\tau, n] \\
+   \Gamma, x : \tau; m; \tau_r \vdash s \checks \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Return}
+
+\begin{mathpar}
+\inferrule*[right=Return$\checks$]
+  {\Gamma; m \vdash e \checks \tau_r}
+  {\Gamma; m; \tau_r \vdash \kw{return}\ e \checks \kw{None}}
+
+\inferrule*[right=ReturnVoid$\checks$]
+  {\tau_r = \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{return} \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Assert}
+
+\begin{mathpar}
+\inferrule*[right=Assert$\checks$]
+  {\Gamma; m \vdash e \checks \kw{bool}}
+  {\Gamma; m \vdash \kw{assert}\ e \checks \kw{None}}
+
+\inferrule*[right=AssertMsg$\checks$]
+  {\Gamma; m \vdash e \checks \kw{bool} \\ \Gamma; m \vdash \mathit{msg} \checks \kw{String}[n] \\ n \leq 1024}
+  {\Gamma; m \vdash \kw{assert}\ e,\ \mathit{msg} \checks \kw{None}}
+
+\inferrule*[right=AssertUnreach$\checks$]
+  {\Gamma; m \vdash e \checks \kw{bool}}
+  {\Gamma; m \vdash \kw{assert}\ e,\ \kw{UNREACHABLE} \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Terminating Statements}
+
+\begin{mathpar}
+\inferrule*[right=Raise$\checks$]
+  {\Gamma; m \vdash e \checks \kw{String}[n] \\ n \leq 1024}
+  {\Gamma; m \vdash \kw{raise}\ e \checks \kw{None}}
+
+\inferrule*[right=RaiseUnreach$\checks$]
+  { }
+  {\Gamma; m \vdash \kw{raise}\ \kw{UNREACHABLE} \checks \kw{None}}
+
+\inferrule*[right=Selfdestruct$\checks$]
+  {\Gamma; m \vdash e \checks \kw{address} \\ m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{selfdestruct}(e) \checks \kw{None}}
+
+\inferrule*[right=Break$\checks$]
+  {\text{inside a loop}}
+  {\Gamma; m \vdash \kw{break} \checks \kw{None}}
+
+\inferrule*[right=Continue$\checks$]
+  {\text{inside a loop}}
+  {\Gamma; m \vdash \kw{continue} \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Event Logging}
+
+\begin{mathpar}
+\inferrule*[right=Log$\checks$]
+  {\kw{event}\ E = \{a_1 : \tau_1, \ldots, a_n : \tau_n\} \\
+   \Gamma; m \vdash e_i \checks \tau_i \text{ for all } i \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n) \checks \kw{None}}
+\end{mathpar}
+
+\subsection{Ether Transfer and Low-Level Calls}
+
+\begin{mathpar}
+\inferrule*[right=Send$\checks$]
+  {\Gamma; m \vdash e_1 \checks \kw{address} \\ \Gamma; m \vdash e_2 \checks \kw{uint256} \\
+   m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{send}(e_1, e_2) \checks \kw{None}}
+
+\inferrule*[right=RawCallStmt$\checks$]
+  {\Gamma; m \vdash e_1 \checks \kw{address} \\ \Gamma; m \vdash e_2 \checks \kw{Bytes}[n] \\
+   \text{no \kw{max\_outsize} specified} \\ m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{raw\_call}(e_1, e_2, \ldots) \checks \kw{None}}
+\end{mathpar}
+
+For \kw{raw\_call} with output:
+
+\begin{mathpar}
+\inferrule*[right=RawCallExpr$\synth$]
+  {\Gamma; m \vdash e_1 \checks \kw{address} \\ \Gamma; m \vdash e_2 \checks \kw{Bytes}[n] \\
+   \kw{max\_outsize} = k \\ m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{raw\_call}(e_1, e_2, \ldots, \kw{max\_outsize}=k) \synth \kw{Bytes}[k]}
+\end{mathpar}
+
+%==============================================================================
+\section{Function Definitions}
+%==============================================================================
+
+\begin{mathpar}
+\inferrule*[right=FunDef$\checks$]
+  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n; m_f; \tau_r \vdash \mathit{body} \checks \kw{None}}
+  {\Gamma \vdash \kw{@}v\ \kw{@}m_f\ \kw{def}\ f(\overline{x : \tau}) \to \tau_r \checks
+   (\overline{\tau}) \xrightarrow{v, m_f} \tau_r}
+\end{mathpar}
+
+%==============================================================================
+\section{Summary: Bidirectionalization Principle}
+%==============================================================================
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\toprule
+\textbf{Form Category} & \textbf{Direction} & \textbf{Examples} \\
+\midrule
+Variables & Synthesize ($\synth$) & $x$, state variables \\
+Literals (Introduction) & Check ($\checks$) & \kw{True}, $42$, \kw{"hello"} \\
+Composite Literals & Check ($\checks$) & $[e_1, \ldots]$, $(e_1, e_2)$, $S(\ldots)$ \\
+Operations (Elimination) & Synthesize ($\synth$) & $e_1 + e_2$, $\kw{not}\ e$ \\
+Subscript/Attribute & Synthesize ($\synth$) & $e[i]$, $e.f$ \\
+Function Calls & Synthesize ($\synth$) & $f(e_1, \ldots)$, \kw{extcall} \\
+Type Annotations & Synthesize ($\synth$) & \kw{convert}, \kw{empty} \\
+Conditional Expr & Both & $e_1\ \kw{if}\ c\ \kw{else}\ e_2$ \\
+Statements & Check $\checks$ \kw{None} & assignments, control flow \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+%==============================================================================
+\begin{thebibliography}{9}
+
+\bibitem{dunfield2020}
+Jana Dunfield and Neel Krishnaswami.
+\textit{Bidirectional Typing}.
+arXiv:1908.05839, 2020.
+
+\bibitem{dunfield2004}
+Jana Dunfield and Frank Pfenning.
+Tridirectional Typechecking.
+\textit{POPL}, 2004.
+
+\bibitem{pierce2002types}
+Benjamin C. Pierce.
+\textit{Types and Programming Languages}.
+MIT Press, 2002.
+
+\end{thebibliography}
+
+\end{document}
