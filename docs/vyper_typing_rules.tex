@@ -51,7 +51,8 @@ typing literature~\cite{dunfield2013complete}.
 \mid \quad & \kw{address} && \text{Ethereum address (160 bits)} \\
 \mid \quad & \kw{bytes}M && \text{Fixed-size byte array } (M \in \{1,\ldots,32\}) \\
 \mid \quad & \kw{Bytes}[n] && \text{Dynamic byte array (max length } n \text{)} \\
-\mid \quad & \kw{String}[n] && \text{Dynamic string (max length } n \text{)}
+\mid \quad & \kw{String}[n] && \text{Dynamic string (max length } n \text{)} \\
+\mid \quad & \kw{None} && \text{No value (statements, void functions)}
 \end{align*}
 
 \subsection{Composite Types}
@@ -67,14 +68,20 @@ typing literature~\cite{dunfield2013complete}.
 \mid \quad & \kw{interface}\ I && \text{Interface type}
 \end{align*}
 
-\subsection{Void Type}
+\subsection{None Type}
 
-The void type represents the absence of a return value:
+The \kw{None} type represents computations that produce no useful value:
 \[
-\kw{void}
+\kw{None}
 \]
-The void type may \textbf{only} appear as a function return type $\tau_r$.
-In user-facing syntax, functions with no return value simply omit the return type annotation.
+This aligns with Python's \texttt{None}. The type $\kw{None}$ is used for:
+\begin{itemize}
+  \item Statements and expressions evaluated solely for side effects
+  \item The return type of functions with no return value
+  \item Terminating operations (\kw{raise}, \kw{selfdestruct}, \kw{break}, \kw{continue})
+\end{itemize}
+The type $\kw{None}$ cannot be used as a variable type, array element type,
+or function parameter type.
 
 \subsection{Type Classes}
 
@@ -124,8 +131,8 @@ We use the following judgment forms, following standard conventions~\cite{pierce
 
 \begin{center}
 \begin{tabular}{ll}
-$\Gamma; m \vdash e : \tau$ & Expression $e$ has type $\tau$ \\
-$\Gamma; m; \tau_r \vdash s \dashv \Gamma'$ & Statement $s$ is well-formed, transforms $\Gamma$ to $\Gamma'$ \\
+$\Gamma; m; \tau_r \vdash e : \tau$ & Expression $e$ has type $\tau$ \\
+$\Gamma; m; \tau_r \vdash e : \tau \dashv \Gamma'$ & Expression $e$ has type $\tau$, extending context to $\Gamma'$ \\
 $\subtype{\tau_1}{\tau_2}$ & Type $\tau_1$ is a subtype of $\tau_2$ \\
 \end{tabular}
 \end{center}
@@ -133,20 +140,21 @@ $\subtype{\tau_1}{\tau_2}$ & Type $\tau_1$ is a subtype of $\tau_2$ \\
 The notation threads:
 \begin{itemize}
   \item $m$ --- the enclosing function's mutability
-  \item $\tau_r$ --- the enclosing function's return type (used by \kw{return} statements)
+  \item $\tau_r$ --- the enclosing function's return type (used by \kw{return})
 \end{itemize}
 
-\paragraph{Expressions vs.\ Statements.}
-Expressions and statements are distinct syntactic categories. Expressions have types and
-produce values; statements do not have types and cannot appear in expression contexts.
-This syntactic separation prevents constructs like \texttt{return (x = 1)}---assignment
-is a statement, not an expression, so it cannot be the operand of \kw{return}.
+\paragraph{Unified Expression Typing.}
+We use a single judgment form for both expressions and statements. Traditional ``statements''
+and terminating operations (\kw{raise}, \kw{selfdestruct}) are expressions of type $\kw{None}$.
 
-\paragraph{Output Context Convention.}
-The notation $\Gamma; m; \tau_r \vdash s \dashv \Gamma'$ uses $\dashv$ to indicate
-the \emph{output context}~\cite{dunfield2013complete}---the typing context after executing $s$.
-When a statement does not modify the context (i.e., $\Gamma' = \Gamma$), we use the
-abbreviated form $\Gamma; m; \tau_r \vdash s$ without the output context.
+The type $\kw{None}$ cannot be used as a value: it cannot be assigned to variables
+or passed as function arguments. This prevents constructs like \texttt{x = (y = 1)}
+since assignment has type $\kw{None}$.
+
+\paragraph{Output Context.}
+Some expressions extend the typing context (e.g., variable declarations).
+We write $\Gamma; m; \tau_r \vdash e : \tau \dashv \Gamma'$ when $e$ extends $\Gamma$ to $\Gamma'$.
+When the context is unchanged, we omit $\dashv \Gamma'$.
 
 %==============================================================================
 \section{Subtyping Rules}
@@ -309,7 +317,12 @@ $\kw{struct}$, $\tau[n]$, $\kw{DynArray}$, $\kw{HashMap}$, $\kw{event}$, tuple.
 \section{Expression Typing Rules}
 %==============================================================================
 
-\fbox{$\Gamma; m \vdash e : \tau$} \quad (expression $e$ has type $\tau$ in context $\Gamma$ under mutability $m$)
+\fbox{$\Gamma; m; \tau_r \vdash e : \tau$} \quad (expression $e$ has type $\tau$)
+
+\medskip
+\noindent
+For brevity, we omit $\tau_r$ from rules that do not reference the return type.
+The return type $\tau_r$ is only needed for \kw{return} expressions.
 
 \subsection{Literals}
 
@@ -603,18 +616,19 @@ Function types include visibility and mutability:
 \sigma ::= (\tau_1, \ldots, \tau_n) \xrightarrow{v, m} \tau_r
 \]
 where $v \in \{\kw{internal}, \kw{external}, \kw{deploy}\}$ and $m \in \{\kw{pure}, \kw{view}, \kw{nonpayable}, \kw{payable}\}$.
+Functions with no return annotation have return type $\kw{None}$.
 
 \subsection{Function Definition}
 
 \begin{mathpar}
 \inferrule*[right=T-FunDef]
-  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n; m_f; \tau_r \vdash \mathit{body}}
+  {\Gamma, x_1 : \tau_1, \ldots, x_n : \tau_n; m_f; \tau_r \vdash \mathit{body} : \kw{None}}
   {\Gamma \vdash \kw{@}v\ \kw{@}m_f\ \kw{def}\ f(\overline{x : \tau}) \to \tau_r :
    (\overline{\tau}) \xrightarrow{v, m_f} \tau_r}
 \end{mathpar}
 
-The return type $\tau_r$ is bound in the body's statement judgment, allowing
-\textsc{T-Return} to verify that returned expressions match the declared type.
+The return type $\tau_r$ is bound in the body, allowing \textsc{T-Return} to verify
+that returned expressions match the declared type.
 Function parameters $x_i$ are added to the context with $\mu(x_i) = \kw{constant}$
 (parameters are immutable and cannot be reassigned).
 
@@ -622,14 +636,13 @@ Function parameters $x_i$ are added to the context with $\mu(x_i) = \kw{constant
 
 \begin{mathpar}
 \inferrule*[right=T-InternalCall]
-  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_r) \in \Gamma \\
-   \tau_r \neq \kw{void} \\
+  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_f) \in \Gamma \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m_f \leq m}
-  {\Gamma; m \vdash f(\overline{e}) : \tau_r}
+  {\Gamma; m \vdash f(\overline{e}) : \tau_f}
 \end{mathpar}
 
-Calls to void-returning internal functions are statements (Section~\ref{sec:statements}).
+When $\tau_f = \kw{None}$, the call produces $\kw{None}$ and can only be used as a statement.
 
 \subsection{External Function Calls}
 
@@ -638,102 +651,76 @@ External calls require explicit \kw{extcall} or \kw{staticcall} keywords:
 \begin{mathpar}
 \inferrule*[right=T-ExtCall]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
-   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
-   \tau_r \neq \kw{void} \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_f) \in I \\
    m_f \geq \kw{nonpayable} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m \geq \kw{nonpayable}}
-  {\Gamma; m \vdash \kw{extcall}\ e.f(\overline{e}) : \tau_r}
+  {\Gamma; m \vdash \kw{extcall}\ e.f(\overline{e}) : \tau_f}
 
 \inferrule*[right=T-StaticCall]
   {\Gamma; m \vdash e : \kw{interface}\ I \\
-   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_r) \in I \\
-   \tau_r \neq \kw{void} \\
+   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_f) \in I \\
    m_f \in \{\kw{view}, \kw{pure}\} \\ m_f \leq m \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i}
-  {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) : \tau_r}
+  {\Gamma; m \vdash \kw{staticcall}\ e.f(\overline{e}) : \tau_f}
 \end{mathpar}
 
-Calls to void-returning external functions are statements (Section~\ref{sec:statements}).
+When $\tau_f = \kw{None}$, the call produces $\kw{None}$.
 
 %==============================================================================
-\section{Statement Typing Rules}
+\section{None-Typed Expressions (Statements)}
 \label{sec:statements}
 %==============================================================================
 
-\fbox{$\Gamma; m; \tau_r \vdash s \dashv \Gamma'$} \quad (statement $s$ is well-formed under mutability $m$ with return type $\tau_r$)
+\fbox{$\Gamma; m; \tau_r \vdash e : \kw{None}$} \quad (expression $e$ has type $\kw{None}$)
 
 \medskip
 \noindent
-Statement judgments check well-formedness; statements do not have types.
-The return type $\tau_r$ is threaded through to validate \kw{return} statements.
-When a statement does not modify the context (i.e., $\Gamma' = \Gamma$),
-we abbreviate to $\Gamma; m; \tau_r \vdash s$ without the output context.
+Expressions of type $\kw{None}$ are traditionally called ``statements.''
+They are evaluated for side effects and produce no useful value.
 
-\subsection{Expression Statements}
-
-Only function calls can appear as standalone statements. Other expressions
-(e.g., \texttt{1 + 2}, \kw{empty(uint256)}) are rejected with
-``Expressions without assignment are disallowed.''
-
-Function calls and method calls may discard their return values when used as statements:
+\subsection{Method Calls}
 
 \begin{mathpar}
 \inferrule*[right=T-Append]
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\
    \mu(a) = \kw{modifiable}}
-  {\Gamma; m; \tau_r \vdash a.\kw{append}(e)}
+  {\Gamma; m \vdash a.\kw{append}(e) : \kw{None}}
 
 \inferrule*[right=T-PopStmt]
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\ \mu(a) = \kw{modifiable}}
-  {\Gamma; m; \tau_r \vdash a.\kw{pop}()}
-
-\inferrule*[right=T-InternalCallStmt]
-  {(f : (\overline{\tau}) \xrightarrow{\kw{internal}, m_f} \tau_f) \in \Gamma \\
-   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
-   m_f \leq m}
-  {\Gamma; m; \tau_r \vdash f(\overline{e})}
-
-\inferrule*[right=T-ExtCallStmt]
-  {\Gamma; m \vdash e : \kw{interface}\ I \\
-   (f : (\overline{\tau}) \xrightarrow{\kw{external}, m_f} \tau_f) \in I \\
-   m_f \geq \kw{nonpayable} \\
-   \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
-   m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash \kw{extcall}\ e.f(\overline{e})}
-
+  {\Gamma; m \vdash a.\kw{pop}() : \kw{None}}
 \end{mathpar}
 
-Note: The return value $\tau_f$ (which may be $\kw{void}$ or any other type) is discarded.
-These statement forms allow calling functions for their side effects only.
-
-\textbf{Important:} Standalone \kw{staticcall} statements are \textbf{banned} in Vyper.
-Since \kw{staticcall} invokes pure/view functions (which have no side effects),
-discarding their result would be pointless. The result must be assigned or used.
+The \kw{pop} method can be used both as an expression (returning $\tau$; see \textsc{T-Pop})
+or as a statement (discarding the result; \textsc{T-PopStmt}). Since $\tau \neq \kw{None}$
+for valid dynamic array element types, both rules are needed.
 
 \subsection{Variable Declaration}
 
 \begin{mathpar}
 \inferrule*[right=T-VarDecl]
-  {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau}}
-  {\Gamma; m; \tau_r \vdash (x : \tau = e) \dashv \Gamma, x : \tau}
+  {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau} \\ \tau' \neq \kw{None}}
+  {\Gamma; m \vdash (x : \tau = e) : \kw{None} \dashv \Gamma, x : \tau}
 \end{mathpar}
+
+The premise $\tau' \neq \kw{None}$ ensures that $\kw{None}$-typed expressions cannot be assigned.
 
 \subsection{Assignment}
 
 \begin{mathpar}
 \inferrule*[right=T-Assign]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau' \\
-   \subtype{\tau'}{\tau} \\ \mu(x) = \kw{modifiable} \\
+   \subtype{\tau'}{\tau} \\ \tau' \neq \kw{None} \\ \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash x = e}
+  {\Gamma; m \vdash x = e : \kw{None}}
 
 \inferrule*[right=T-AugAssign]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau \\ \tau \in \mathit{NumericT} \\
    \oplus \in \{+, -, *, /\!/, \%, \kw{**}\} \\
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash x\ \oplus\!\!= \ e}
+  {\Gamma; m \vdash x\ \oplus\!\!= \ e : \kw{None}}
 
 \inferrule*[right=T-AugAssignBit]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau \\
@@ -741,14 +728,14 @@ discarding their result would be pointless. The result must be assigned or used.
    \odot \in \{\&, |, \wedge\} \\
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash x\ \odot\!\!= \ e}
+  {\Gamma; m \vdash x\ \odot\!\!= \ e : \kw{None}}
 
 \inferrule*[right=T-AugAssignShift]
   {(x : \tau) \in \Gamma \\ \Gamma; m \vdash e : \tau' \\ \tau' \in \mathit{IntegerT} \\
    \tau \in \{\kw{uint256}, \kw{int256}, \kw{bytes32}\} \\ \diamond \in \{\ll, \gg\} \\
    \mu(x) = \kw{modifiable} \\
    \ell(x) \in \{\kw{storage}, \kw{transient}\} \Rightarrow m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash x\ \diamond\!\!= \ e}
+  {\Gamma; m \vdash x\ \diamond\!\!= \ e : \kw{None}}
 \end{mathpar}
 
 \subsection{Control Flow}
@@ -756,37 +743,40 @@ discarding their result would be pointless. The result must be assigned or used.
 \begin{mathpar}
 \inferrule*[right=T-If]
   {\Gamma; m \vdash e : \kw{bool} \\
-   \Gamma; m; \tau_r \vdash s_1 \\
-   \Gamma; m; \tau_r \vdash s_2}
-  {\Gamma; m; \tau_r \vdash \kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2}
+   \Gamma; m; \tau_r \vdash s_1 : \kw{None} \\
+   \Gamma; m; \tau_r \vdash s_2 : \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2 : \kw{None}}
 
 \inferrule*[right=T-ForRange]
   {\Gamma; m \vdash e_1 : \tau \\ \Gamma; m \vdash e_2 : \tau \\ \tau \in \mathit{IntegerT} \\
-   \Gamma, i : \tau; m; \tau_r \vdash s}
-  {\Gamma; m; \tau_r \vdash \kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s}
+   \Gamma, i : \tau; m; \tau_r \vdash s : \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s : \kw{None}}
 
 \inferrule*[right=T-ForSArray]
   {\Gamma; m \vdash a : \tau[n] \\
-   \Gamma, x : \tau; m; \tau_r \vdash s}
-  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}
+   \Gamma, x : \tau; m; \tau_r \vdash s : \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s : \kw{None}}
 
 \inferrule*[right=T-ForDArray]
   {\Gamma; m \vdash a : \kw{DynArray}[\tau, n] \\
-   \Gamma, x : \tau; m; \tau_r \vdash s}
-  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s}
+   \Gamma, x : \tau; m; \tau_r \vdash s : \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{for}\ x : \tau\ \kw{in}\ a\kw{:}\ s : \kw{None}}
 \end{mathpar}
 
 \subsection{Return}
 
 \begin{mathpar}
 \inferrule*[right=T-Return]
-  {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau_r}}
-  {\Gamma; m; \tau_r \vdash \kw{return}\ e}
+  {\Gamma; m \vdash e : \tau' \\ \subtype{\tau'}{\tau_r} \\ \tau' \neq \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{return}\ e : \kw{None}}
 
 \inferrule*[right=T-ReturnVoid]
-  { }
-  {\Gamma; m; \kw{void} \vdash \kw{return}}
+  {\tau_r = \kw{None}}
+  {\Gamma; m; \tau_r \vdash \kw{return} : \kw{None}}
 \end{mathpar}
+
+Note: A function with no return value has $\tau_r = \kw{None}$. The premise $\tau' \neq \kw{None}$
+in \textsc{T-Return} prevents returning $\kw{None}$-typed expressions.
 
 \subsection{Assert}
 
@@ -795,28 +785,46 @@ Assert can optionally take a revert message:
 \begin{mathpar}
 \inferrule*[right=T-Assert]
   {\Gamma; m \vdash e : \kw{bool}}
-  {\Gamma; m; \tau_r \vdash \kw{assert}\ e}
+  {\Gamma; m \vdash \kw{assert}\ e : \kw{None}}
 
 \inferrule*[right=T-AssertMsg]
   {\Gamma; m \vdash e : \kw{bool} \\ \Gamma; m \vdash \mathit{msg} : \kw{String}[n] \\ n \leq 1024}
-  {\Gamma; m; \tau_r \vdash \kw{assert}\ e,\ \mathit{msg}}
+  {\Gamma; m \vdash \kw{assert}\ e,\ \mathit{msg} : \kw{None}}
 
 \inferrule*[right=T-AssertUnreach]
   {\Gamma; m \vdash e : \kw{bool}}
-  {\Gamma; m; \tau_r \vdash \kw{assert}\ e,\ \kw{UNREACHABLE}}
+  {\Gamma; m \vdash \kw{assert}\ e,\ \kw{UNREACHABLE} : \kw{None}}
 \end{mathpar}
 
-\subsection{Raise}
+\subsection{Terminating Expressions}
+
+Expressions that never return normally have type $\kw{None}$.
+Code after these expressions is unreachable.
 
 \begin{mathpar}
 \inferrule*[right=T-Raise]
   {\Gamma; m \vdash e : \kw{String}[n] \\ n \leq 1024}
-  {\Gamma; m; \tau_r \vdash \kw{raise}\ e}
+  {\Gamma; m \vdash \kw{raise}\ e : \kw{None}}
 
 \inferrule*[right=T-RaiseUnreach]
   { }
-  {\Gamma; m; \tau_r \vdash \kw{raise}\ \kw{UNREACHABLE}}
+  {\Gamma; m \vdash \kw{raise}\ \kw{UNREACHABLE} : \kw{None}}
+
+\inferrule*[right=T-Selfdestruct]
+  {\Gamma; m \vdash e : \kw{address} \\ m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{selfdestruct}(e) : \kw{None}}
+
+\inferrule*[right=T-Break]
+  {\text{inside a loop}}
+  {\Gamma; m \vdash \kw{break} : \kw{None}}
+
+\inferrule*[right=T-Continue]
+  {\text{inside a loop}}
+  {\Gamma; m \vdash \kw{continue} : \kw{None}}
 \end{mathpar}
+
+The \kw{break} and \kw{continue} statements transfer control out of the current block,
+making subsequent code unreachable.
 
 \subsection{Event Logging}
 
@@ -825,7 +833,7 @@ Assert can optionally take a revert message:
   {\kw{event}\ E = \{a_1 : \tau_1, \ldots, a_n : \tau_n\} \\
    \Gamma; m \vdash e_i : \tau_i' \\ \subtype{\tau_i'}{\tau_i} \text{ for all } i \\
    m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n)}
+  {\Gamma; m \vdash \kw{log}\ E(a_1 = e_1, \ldots, a_n = e_n) : \kw{None}}
 \end{mathpar}
 
 \subsection{Ether Transfer and Low-Level Calls}
@@ -834,22 +842,24 @@ Assert can optionally take a revert message:
 \inferrule*[right=T-Send]
   {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{uint256} \\
    m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash \kw{send}(e_1, e_2)}
-
-\inferrule*[right=T-Selfdestruct]
-  {\Gamma; m \vdash e : \kw{address} \\ m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash \kw{selfdestruct}(e)}
+  {\Gamma; m \vdash \kw{send}(e_1, e_2) : \kw{None}}
 
 \inferrule*[right=T-RawCallStmt]
   {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{Bytes}[n] \\
    \text{no \kw{max\_outsize} specified} \\ m \geq \kw{nonpayable}}
-  {\Gamma; m; \tau_r \vdash \kw{raw\_call}(e_1, e_2, \ldots)}
+  {\Gamma; m \vdash \kw{raw\_call}(e_1, e_2, \ldots) : \kw{None}}
 \end{mathpar}
 
-These are statements (not expressions) and cannot be used to obtain a value.
 The \kw{send} builtin accepts an optional \kw{gas} keyword argument of type \kw{uint256}.
-The \kw{raw\_call} builtin becomes an expression when \kw{max\_outsize} is specified,
-returning \kw{Bytes}[$n$] where $n$ is the specified max output size.
+
+\begin{mathpar}
+\inferrule*[right=T-RawCallExpr]
+  {\Gamma; m \vdash e_1 : \kw{address} \\ \Gamma; m \vdash e_2 : \kw{Bytes}[n] \\
+   \kw{max\_outsize} = k \\ m \geq \kw{nonpayable}}
+  {\Gamma; m \vdash \kw{raw\_call}(e_1, e_2, \ldots, \kw{max\_outsize}=k) : \kw{Bytes}[k]}
+\end{mathpar}
+
+When \kw{max\_outsize} is specified, \kw{raw\_call} returns \kw{Bytes}[$k$].
 
 %==============================================================================
 \section{Type Conversion Rules}
@@ -958,6 +968,8 @@ The predicate $\convertible{\tau_1}{\tau_2}$ defines valid explicit conversions:
 The Vyper type system is characterized by:
 
 \begin{enumerate}
+  \item \textbf{Unified expression typing}: Statements and terminating operations
+        are expressions of type $\kw{None}$
   \item \textbf{No implicit coercions}: Types must match exactly or through explicit subtyping
   \item \textbf{Nominal typing}: User-defined types use identity comparison ($\equiv$)
   \item \textbf{Structural subtyping}: Bytestrings and dynamic arrays by max length
@@ -965,6 +977,7 @@ The Vyper type system is characterized by:
   \item \textbf{Location tracking}: Variables have associated storage locations
   \item \textbf{Explicit conversions}: Via \kw{convert()} with bounds checking
   \item \textbf{Static bounds}: Integer overflow checked at compile-time where possible
+  \item \textbf{Value restriction}: $\kw{None}$ cannot be assigned or passed as arguments
 \end{enumerate}
 
 %==============================================================================
