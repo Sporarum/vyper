@@ -684,8 +684,7 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
         def _validate_self_namespace():
             # block globals if storage variable already exists
             self._self_t.typ._check_add_member(name)
-            ns = Namespace.context.get()
-            Namespace.context.set(ns.with_item(name, var_info))
+            Namespace.add(name, var_info)
 
         if node.is_constant:
             assert node.value is not None  # checked in VariableDecl.validate()
@@ -710,14 +709,12 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
     def visit_FlagDef(self, node):
         obj = FlagT.from_FlagDef(node)
         node._metadata["flag_type"] = obj
-        ns = Namespace.context.get()
-        Namespace.context.set(ns.with_item(node.name, obj))
+        Namespace.add(node.name, obj)
 
     def visit_EventDef(self, node):
         obj = EventT.from_EventDef(node)
         node._metadata["event_type"] = obj
-        ns = Namespace.context.get()
-        Namespace.context.set(ns.with_item(node.name, obj))
+        Namespace.add(node.name, obj)
         self._events.append(obj)
 
     def visit_FunctionDef(self, node):
@@ -748,8 +745,7 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
 
             import_info._typ = module_info
 
-            ns = Namespace.context.get()
-            Namespace.context.set(ns.with_item(import_info.alias, module_info))
+            Namespace.add(import_info.alias, module_info)
 
     def _load_import(self, import_info: ImportInfo) -> Any:
         path = import_info.compiler_input.path
@@ -780,11 +776,9 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
     def visit_InterfaceDef(self, node):
         interface_t = InterfaceT.from_InterfaceDef(node)
         node._metadata["interface_type"] = interface_t
-        ns = Namespace.context.get()
-        Namespace.context.set(ns.with_item(node.name, interface_t))
+        Namespace.add(node.name, interface_t)
 
     def visit_StructDef(self, node):
         struct_t = StructT.from_StructDef(node)
         node._metadata["struct_type"] = struct_t
-        ns = Namespace.context.get()
-        Namespace.context.set(ns.with_item(node.name, struct_t))
+        Namespace.add(node.name, struct_t)
