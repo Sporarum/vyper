@@ -549,7 +549,7 @@ Variable declarations extend the context:
   {\Gamma; m; \tau_r \vdash \kw{if}\ e\kw{:}\ s_1\ \kw{else:}\ s_2 \checks \kw{None}}
 
 \inferrule*[right=ForRange$\checks$]
-  {\Gamma; m \vdash e_1 \synth \tau \\ \Gamma; m \vdash e_2 \checks \tau \\ \tau \in \mathit{IntegerT} \\
+  {\Gamma; m \vdash e_1 \checks \tau \\ \Gamma; m \vdash e_2 \checks \tau \\ \tau \in \mathit{IntegerT} \\
    \Gamma, i : \tau; m; \tau_r \vdash s \checks \kw{None}}
   {\Gamma; m; \tau_r \vdash \kw{for}\ i : \tau\ \kw{in range}(e_1, e_2)\kw{:}\ s \checks \kw{None}}
 
