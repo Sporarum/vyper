@@ -393,9 +393,10 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
             location, modifiability = (DataLocation.CALLDATA, Modifiability.RUNTIME_CONSTANT)
 
         for arg in self.func.arguments:
-            Namespace.builder_context.get()[arg.name] = VarInfo(
+            ns = Namespace.context.get()
+            Namespace.context.set(ns.with_item(arg.name, VarInfo(
                 arg.typ, location=location, modifiability=modifiability, decl_node=arg.ast_source
-            )
+            )))
 
         for node in self.fn_node.body:
             self.visit(node)
@@ -439,9 +440,10 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
         # validate the value before adding it to the namespace
         self.expr_visitor.visit(node.value, typ)
 
-        Namespace.builder_context.get()[name] = VarInfo(
+        ns = Namespace.context.get()
+        Namespace.context.set(ns.with_item(name, VarInfo(
             typ, location=DataLocation.MEMORY, decl_node=node
-        )
+        )))
 
         self.expr_visitor.visit(node.target, typ)
 
@@ -659,9 +661,10 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
         with Namespace.sub_scope(), self.enter_for_loop(iter_var):
             target_name = node.target.target.id
             # maybe we should introduce a new Modifiability: LOOP_VARIABLE
-            Namespace.builder_context.get()[target_name] = VarInfo(
+            ns = Namespace.context.get()
+            Namespace.context.set(ns.with_item(target_name, VarInfo(
                 target_type, modifiability=Modifiability.RUNTIME_CONSTANT, decl_node=node.target
-            )
+            )))
 
             self.expr_visitor.visit(node.target.target, target_type)
 
