@@ -585,7 +585,8 @@ class ContractFunctionT(VyperType):
             if not atyp.compare_type(btyp):
                 return False
 
-        if return_type and not return_type.compare_type(other_return_type):  # type: ignore
+        # Fixed to be co-variant
+        if return_type and not other_return_type.compare_type(return_type):  # type: ignore
             return False
 
         return self.mutability == other.mutability
