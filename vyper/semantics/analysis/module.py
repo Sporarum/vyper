@@ -155,7 +155,7 @@ def _compute_reachable_set(fn_t: ContractFunctionT, path: list[ContractFunctionT
     path.pop()
 
 
-class ModuleAnalyzer(VyperNodeVisitorBase):
+class ModuleAnalyzer(VyperNodeVisitorBase[None]):
     scope_name = "module"
 
     def __init__(

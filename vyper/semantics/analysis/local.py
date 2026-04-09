@@ -256,8 +256,7 @@ def check_module_uses(node: vy_ast.ExprNode) -> Optional[ModuleInfo]:
     return root_module_info
 
 
-class FunctionAnalyzer(VyperNodeVisitorBase):
-    ignored_types = (vy_ast.Pass,)
+class FunctionAnalyzer(VyperNodeVisitorBase[None]):
     scope_name = "function"
 
     def __init__(
@@ -611,8 +610,11 @@ class FunctionAnalyzer(VyperNodeVisitorBase):
 
         self.expr_visitor.visit(node.value, self.func.return_type)
 
+    def visit_Pass(self, node):
+        pass
 
-class ExprVisitor(VyperNodeVisitorBase):
+
+class ExprVisitor(VyperNodeVisitorBase[None]):
     def __init__(self, function_analyzer: Optional[FunctionAnalyzer] = None):
         self.function_analyzer = function_analyzer
 
