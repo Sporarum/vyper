@@ -33,11 +33,6 @@ def foo():
     x = 5
     """,
     """
-@external
-def foo():
-    int128 = 5
-    """,
-    """
 a: public(constant(uint256)) = 1
 
 @external

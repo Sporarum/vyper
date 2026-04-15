@@ -67,8 +67,8 @@ class _ExprAnalyser:
     def __init__(self):
         self.namespace = get_namespace()
 
-    def get_expr_info(self, node: vy_ast.VyperNode, is_callable: bool = False) -> ExprInfo:
-        t = get_exact_type_from_node(node, include_type_exprs=is_callable)
+    def get_expr_info(self, node: vy_ast.VyperNode) -> ExprInfo:
+        t = get_exact_type_from_node(node)
 
         # if it's a Name, we have varinfo for it
         if isinstance(node, vy_ast.Name):
@@ -81,7 +81,7 @@ class _ExprAnalyser:
                 return ExprInfo.from_moduleinfo(info)
 
             if isinstance(info, VyperType):
-                return ExprInfo(TYPE_T(info))
+                return ExprInfo(TYPE_T(info), modifiability=Modifiability.CONSTANT)
 
             raise CompilerPanic(f"unreachable! {info}", node)
 
@@ -90,8 +90,7 @@ class _ExprAnalyser:
             # propagate the parent exprinfo members down into the new expr
             # note: Attribute(expr value, identifier attr)
 
-            # allow the value node to be a type expr (e.g., MyFlag.A)
-            info = self.get_expr_info(node.value, is_callable=True)
+            info = self.get_expr_info(node.value)
             attr = node.attr
 
             t = info.typ.get_member(attr, node)
@@ -463,9 +462,9 @@ def get_exact_type_from_node(node: vy_ast.VyperNode, include_type_exprs=True) ->
     return types_list[0]
 
 
-def get_expr_info(node: vy_ast.ExprNode, is_callable: bool = False) -> ExprInfo:
+def get_expr_info(node: vy_ast.ExprNode) -> ExprInfo:
     if node._expr_info is None:
-        node._expr_info = _ExprAnalyser().get_expr_info(node, is_callable)
+        node._expr_info = _ExprAnalyser().get_expr_info(node)
     return node._expr_info
 
 

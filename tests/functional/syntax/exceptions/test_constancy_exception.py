@@ -182,3 +182,14 @@ def foo(f: Foo) -> Foo:
 def test_immutability_violations(bad_code):
     with raises(ImmutableViolation):
         compiler.compile_code(bad_code)
+
+
+# TODO: Should check more types
+def test_assign_to_type():
+    code = """
+@external
+def foo():
+    int128 = 5
+    """
+    with raises(ImmutableViolation):
+        compiler.compile_code(code)
