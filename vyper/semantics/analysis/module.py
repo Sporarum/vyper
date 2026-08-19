@@ -36,7 +36,7 @@ from vyper.semantics.analysis.base import (
 )
 from vyper.semantics.analysis.common import VyperNodeVisitorBase
 from vyper.semantics.analysis.constant_folding import constant_fold
-from vyper.semantics.analysis.dependency_resolver import compute_dependencies
+from vyper.semantics.analysis.dependency_resolver import compute_dependencies, extract_members
 from vyper.semantics.analysis.getters import generate_public_variable_getters
 from vyper.semantics.analysis.imports import ImportAnalyzer
 from vyper.semantics.analysis.levenshtein_utils import get_levenshtein_error_suggestions
@@ -81,8 +81,10 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
         each module is imported by another one, except for a single module
     """
 
+    members = extract_members(root_module_ast)
+
     for module_ast in modules:
-        compute_dependencies(module_ast)
+        compute_dependencies(module_ast, members[module_ast])
 
     # TODO: Instead of being recursive, use `modules`
     # Collect module members, partial validation
