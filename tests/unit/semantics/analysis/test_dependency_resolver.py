@@ -3,7 +3,11 @@ import pytest
 from vyper import ast as vy_ast
 from vyper.ast import parse_to_ast
 from vyper.compiler.input_bundle import FilesystemInputBundle
-from vyper.semantics.analysis.dependency_resolver import Decl, compute_dependencies
+from vyper.semantics.analysis.dependency_resolver import (
+    Decl,
+    compute_dependencies,
+    extract_members,
+)
 from vyper.semantics.analysis.imports import resolve_imports
 from vyper.utils import OrderedSet
 
@@ -23,7 +27,8 @@ def _run(source: str, input_bundle=None) -> dict[str, list[str]]:
         input_bundle = FilesystemInputBundle([])
     module_ast = parse_to_ast(source)
     resolve_imports(module_ast, input_bundle)
-    return _deps_by_name(compute_dependencies(module_ast))
+    members = extract_members(module_ast)
+    return _deps_by_name(compute_dependencies(module_ast, members[module_ast]))
 
 
 PER_DECL_TYPE_CASES = [
@@ -279,7 +284,8 @@ def foo(p: Point) -> Point:
 """
     module_ast = parse_to_ast(src)
     resolve_imports(module_ast, FilesystemInputBundle([]))
-    deps = compute_dependencies(module_ast)
+    members = extract_members(module_ast)
+    deps = compute_dependencies(module_ast, members[module_ast])
 
     (struct_def,) = module_ast.get_children(vy_ast.StructDef)
     (var_decl,) = module_ast.get_children(vy_ast.VariableDecl)
