@@ -20,43 +20,61 @@ Decl: TypeAlias = (
 Members of a module which create new analysis targets
 """
 
+class _MemberExtractor():
+    processing: set[vy_ast.Module] = set()
+    seen: dict[vy_ast.Module, ModuleMembers] = dict()
+
+    def process_r(self, module_ast: vy_ast.Module):
+        assert module_ast not in self.processing
+
+        if module_ast not in self.seen:
+            self.processing.add(module_ast)
+
+            members: dict[str, Decl | ModuleMembers] = {}
+            for node in module_ast.body:
+                if isinstance(node, vy_ast.VariableDecl):
+                    members[node.target.id] = node
+                elif isinstance(node, Decl):
+                    assert not isinstance(node, vy_ast.VariableDecl)  # help mypy
+                    members[node.name] = node
+                elif isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
+                    for info in node._metadata.get("import_infos", []):
+                        if isinstance(info.parsed, vy_ast.Module):
+                            members[info.alias] = self.process_r(info.parsed)
+            
+            self.processing.remove(module_ast)
+            self.seen[module_ast] = ModuleMembers(members)
+
+        return self.seen[module_ast]
+
+
+
+def extract_members(root_module_ast: vy_ast.Module) -> dict[vy_ast.Module, ModuleMembers]:
+    tmp = _MemberExtractor()
+    tmp.process_r(root_module_ast)
+
+    return tmp.seen
+
 
 @dataclass
 class ModuleMembers:
     members: dict[str, Decl | ModuleMembers]
 
-
-def _module_symbols(module_ast: vy_ast.Module) -> ModuleMembers:
-    members: dict[str, Decl | ModuleMembers] = {}
-    for node in module_ast.body:
-        if isinstance(node, vy_ast.VariableDecl):
-            members[node.target.id] = node
-        elif isinstance(node, Decl):
-            assert not isinstance(node, vy_ast.VariableDecl)  # help mypy
-            members[node.name] = node
-        elif isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
-            for info in node._metadata.get("import_infos", []):
-                if isinstance(info.parsed, vy_ast.Module):
-                    members[info.alias] = _module_symbols(info.parsed)
-
-    return ModuleMembers(members)
-
-
-def compute_dependencies(module_ast: vy_ast.Module) -> dict[Decl, OrderedSet[Decl]]:
-    dependency_resolver = _DependencyResolver(module_ast)
+def compute_dependencies(module_ast: vy_ast.Module, module_members: ModuleMembers) -> dict[Decl, OrderedSet[Decl]]:
+    dependency_resolver = _DependencyResolver(module_members)
     return {
         node: dependency_resolver.visit(node) for node in module_ast.body if isinstance(node, Decl)
     }
 
 
 def _resolve_attribute(
-    node: vy_ast.VyperNode, module_info: ModuleMembers
+    node: vy_ast.VyperNode, module_members: ModuleMembers
 ) -> Optional[Decl | ModuleMembers]:
     match node:
         case vy_ast.Name(id=id):
-            return module_info.members.get(id)
+            return module_members.members.get(id)
         case vy_ast.Attribute(attr=attr, value=value):
-            new_module_info = _resolve_attribute(value, module_info)
+            new_module_info = _resolve_attribute(value, module_members)
             if isinstance(new_module_info, ModuleMembers):
                 return new_module_info.members.get(attr)
             else:
@@ -75,9 +93,8 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[Decl]]):
 
     scope_name = "module"
 
-    def __init__(self, module_ast: vy_ast.Module):
-        self.module_ast = module_ast
-        self._module_info = _module_symbols(module_ast)
+    def __init__(self, module_members: ModuleMembers):
+        self.module_members = module_members
 
     def visit_FunctionDef(self, node: vy_ast.FunctionDef) -> OrderedSet[Decl]:
         "Functions depend on their parameter and return types, and parameter default values"
@@ -126,14 +143,14 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[Decl]]):
         )
 
     def visit_Name(self, node: vy_ast.Name) -> OrderedSet[Decl]:
-        member = self._module_info.members.get(node.id)
+        member = self.module_members.members.get(node.id)
         if isinstance(member, Decl):
             return OrderedSet([member])
         else:
             return OrderedSet()
 
     def visit_Attribute(self, node: vy_ast.Attribute) -> OrderedSet[Decl]:
-        resolved = _resolve_attribute(node, self._module_info)
+        resolved = _resolve_attribute(node, self.module_members)
         if isinstance(resolved, Decl):
             return OrderedSet([resolved])
         # Fall back to visiting the base so that e.g. `F.A` (member access on
