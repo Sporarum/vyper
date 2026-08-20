@@ -3,11 +3,7 @@ import pytest
 from vyper import ast as vy_ast
 from vyper.ast import parse_to_ast
 from vyper.compiler.input_bundle import FilesystemInputBundle
-from vyper.semantics.analysis.dependency_resolver import (
-    Decl,
-    compute_dependencies,
-    extract_members,
-)
+from vyper.semantics.analysis.dependency_resolver import Decl, compute_dependencies, extract_members
 from vyper.semantics.analysis.imports import resolve_imports
 from vyper.utils import OrderedSet
 
