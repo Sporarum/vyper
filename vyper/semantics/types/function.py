@@ -548,7 +548,7 @@ class ContractFunctionT(VyperType):
         is_pure = decorators.state_mutability == StateMutability.PURE
 
         if is_pure:
-            # pure functions are always nonreentrant
+            # pure functions are always reentrant
             nonreentrant = False
         elif settings.nonreentrancy_by_default:
             if not is_external:
