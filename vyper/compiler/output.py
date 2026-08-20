@@ -30,10 +30,12 @@ def build_ast_dict(compiler_data: CompilerData) -> dict:
 
 
 def _get_reachable_imports(compiler_data: CompilerData) -> Iterable[vy_ast.Module]:
+    """
+    Get all recursively-reachable imported modules
+    Note: Does not include imported json interfaces
+    """
     import_analysis = compiler_data.resolved_imports
 
-    # get all reachable imports including recursion
-    # (NOTE: does not include imported json interfaces.)
     imported_modules = list(import_analysis.compiler_inputs.values())
     imported_modules = [mod for mod in imported_modules if isinstance(mod, vy_ast.Module)]
     if import_analysis.toplevel_module in imported_modules:

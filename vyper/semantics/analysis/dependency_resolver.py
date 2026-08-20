@@ -20,7 +20,8 @@ Decl: TypeAlias = (
 Members of a module which create new analysis targets
 """
 
-class _MemberExtractor():
+
+class _MemberExtractor:
     processing: set[vy_ast.Module] = set()
     seen: dict[vy_ast.Module, ModuleMembers] = dict()
 
@@ -41,12 +42,11 @@ class _MemberExtractor():
                     for info in node._metadata.get("import_infos", []):
                         if isinstance(info.parsed, vy_ast.Module):
                             members[info.alias] = self.process_r(info.parsed)
-            
+
             self.processing.remove(module_ast)
             self.seen[module_ast] = ModuleMembers(members)
 
         return self.seen[module_ast]
-
 
 
 def extract_members(root_module_ast: vy_ast.Module) -> dict[vy_ast.Module, ModuleMembers]:
@@ -60,7 +60,10 @@ def extract_members(root_module_ast: vy_ast.Module) -> dict[vy_ast.Module, Modul
 class ModuleMembers:
     members: dict[str, Decl | ModuleMembers]
 
-def compute_dependencies(module_ast: vy_ast.Module, module_members: ModuleMembers) -> dict[Decl, OrderedSet[Decl]]:
+
+def compute_dependencies(
+    module_ast: vy_ast.Module, module_members: ModuleMembers
+) -> dict[Decl, OrderedSet[Decl]]:
     dependency_resolver = _DependencyResolver(module_members)
     return {
         node: dependency_resolver.visit(node) for node in module_ast.body if isinstance(node, Decl)
