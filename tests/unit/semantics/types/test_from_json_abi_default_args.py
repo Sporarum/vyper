@@ -1,5 +1,6 @@
 import pytest
 
+from vyper import ast as vy_ast
 from vyper.compiler import CompilerData
 from vyper.compiler.output import build_abi_output
 from vyper.exceptions import NamespaceCollision
@@ -21,7 +22,7 @@ def foo(a: uint256, b: uint256 = 10) -> uint256:
     fn_entries = [e for e in abi if e.get("type") == "function"]
     assert len(fn_entries) == 2
 
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     assert "foo" in interface.functions
     fn = interface.functions["foo"]
     args = list(fn.arguments)
@@ -43,7 +44,7 @@ def foo(a: uint256, b: uint256 = 1, c: uint256 = 2) -> uint256:
     fn_entries = [e for e in abi if e.get("type") == "function"]
     assert len(fn_entries) == 3
 
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     assert "foo" in interface.functions
     fn = interface.functions["foo"]
     args = list(fn.arguments)
@@ -67,7 +68,7 @@ def baz(a: address, b: bool = True) -> bool:
     fn_entries = [e for e in abi if e.get("type") == "function"]
     assert len(fn_entries) == 2
 
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     fn = interface.functions["baz"]
     args = list(fn.arguments)
     assert len(args) == 2
@@ -95,7 +96,7 @@ def bar(x: MyFlag, y: uint256 = 0) -> uint256:
     fn_entries = [e for e in abi if e.get("type") == "function"]
     assert len(fn_entries) == 2
 
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     fn = interface.functions["bar"]
     args = list(fn.arguments)
     assert len(args) == 2
@@ -115,7 +116,7 @@ def test_no_default_args_unchanged():
             "outputs": [{"name": "", "type": "uint256"}],
         }
     ]
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     assert "bar" in interface.functions
     fn = interface.functions["bar"]
     args = list(fn.arguments)
@@ -145,7 +146,7 @@ def test_manual_ordering_keeps_longest_overload():
             "outputs": [{"name": "", "type": "uint256"}],
         },
     ]
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     fn = interface.functions["foo"]
     args = list(fn.arguments)
     assert len(args) == 3
@@ -172,7 +173,7 @@ def test_incompatible_overload_raises():
         },
     ]
     with pytest.raises(NamespaceCollision, match="incompatible input types"):
-        InterfaceT.from_json_abi("T", abi)
+        InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
 
 
 def test_incompatible_overload_at_later_position_raises():
@@ -193,7 +194,7 @@ def test_incompatible_overload_at_later_position_raises():
         },
     ]
     with pytest.raises(NamespaceCollision, match="incompatible input types"):
-        InterfaceT.from_json_abi("T", abi)
+        InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
 
 
 def test_decimal_vs_int168_rejected_despite_same_raw_type():
@@ -218,7 +219,7 @@ def test_decimal_vs_int168_rejected_despite_same_raw_type():
         },
     ]
     with pytest.raises(NamespaceCollision, match="incompatible input types"):
-        InterfaceT.from_json_abi("T", abi)
+        InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
 
 
 def test_mixed_prefix_lengths_keeps_longest_overload():
@@ -257,7 +258,7 @@ def test_mixed_prefix_lengths_keeps_longest_overload():
             "outputs": [{"name": "", "type": "uint256"}],
         },
     ]
-    interface = InterfaceT.from_json_abi("T", abi)
+    interface = InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))
     fn = interface.functions["foo"]
     args = list(fn.arguments)
     assert len(args) == 4
@@ -303,4 +304,4 @@ def test_mixed_prefix_lengths_with_incompatible_extra_arg_raises():
         },
     ]
     with pytest.raises(NamespaceCollision, match="incompatible input types"):
-        InterfaceT.from_json_abi("T", abi)
+        InterfaceT.from_json_abi("T", vy_ast.JsonAbi(json=abi))

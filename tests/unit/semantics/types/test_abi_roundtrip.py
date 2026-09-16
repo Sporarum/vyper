@@ -16,6 +16,7 @@ without error by ``from_json_abi`` -- which is the behavior this PR fixes.
 
 import json
 
+from vyper import ast as vy_ast
 from vyper.compiler.output import build_abi_output
 from vyper.compiler.phases import CompilerData
 from vyper.semantics.types.function import ContractFunctionT
@@ -140,7 +141,7 @@ class TestFallbackABIHandling:
 
     def test_fallback_skipped_by_from_json_abi(self):
         abi = _compile_abi(FALLBACK_ONLY)
-        interface = InterfaceT.from_json_abi("FallbackContract", abi)
+        interface = InterfaceT.from_json_abi("FallbackContract", vy_ast.JsonAbi(json=abi))
         assert len(interface.functions) == 0
 
 
@@ -151,7 +152,7 @@ class TestConstructorABIHandling:
         constructors = [e for e in abi if e["type"] == "constructor"]
         assert len(constructors) == 1
 
-        interface = InterfaceT.from_json_abi("CtorContract", abi)
+        interface = InterfaceT.from_json_abi("CtorContract", vy_ast.JsonAbi(json=abi))
         assert len(interface.functions) == 0
 
     def test_constructor_with_args_skipped_by_from_json_abi(self):
@@ -160,7 +161,7 @@ class TestConstructorABIHandling:
         assert len(constructors) == 1
         assert len(constructors[0]["inputs"]) == 1
 
-        interface = InterfaceT.from_json_abi("CtorArgsContract", abi)
+        interface = InterfaceT.from_json_abi("CtorArgsContract", vy_ast.JsonAbi(json=abi))
         assert len(interface.functions) == 0
 
 
@@ -185,7 +186,7 @@ class TestNoArgsNoReturnRoundtrip:
 class TestMultipleFunctionsAndEventsRoundtrip:
     def test_interface_abi_survives_roundtrip(self):
         abi = _compile_abi(MULTIPLE_FUNCTIONS_AND_EVENTS)
-        interface = InterfaceT.from_json_abi("TokenLike", abi)
+        interface = InterfaceT.from_json_abi("TokenLike", vy_ast.JsonAbi(json=abi))
         reconstructed = interface.to_toplevel_abi_dict()
         # from_json_abi only processes functions and events
         func_event_abi = [e for e in abi if e.get("type") in ("function", "event")]
@@ -215,7 +216,7 @@ class TestPublicStateVarRoundtrip:
 
     def test_getter_interface_abi_survives_roundtrip(self):
         abi = _compile_abi(PUBLIC_STATE_VAR)
-        interface = InterfaceT.from_json_abi("PublicVars", abi)
+        interface = InterfaceT.from_json_abi("PublicVars", vy_ast.JsonAbi(json=abi))
         reconstructed = interface.to_toplevel_abi_dict()
         assert _sorted_abi(reconstructed) == _sorted_abi(abi)
 
@@ -236,7 +237,7 @@ class TestMixedContractRoundtrip:
 
     def test_interface_abi_survives_roundtrip(self):
         abi = _compile_abi(MIXED_CONTRACT)
-        interface = InterfaceT.from_json_abi("MixedContract", abi)
+        interface = InterfaceT.from_json_abi("MixedContract", vy_ast.JsonAbi(json=abi))
         reconstructed = interface.to_toplevel_abi_dict()
         # from_json_abi skips fallback and constructor entries
         func_event_abi = [e for e in abi if e.get("type") in ("function", "event")]

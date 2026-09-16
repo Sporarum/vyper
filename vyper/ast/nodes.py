@@ -677,6 +677,21 @@ class FunctionDef(TopLevel):
             )
 
 
+class JsonAbi(VyperNode):
+    """
+    Node which represents an imported json abi file
+    """
+
+    __slots__ = ("json",)
+
+    # leave the json untouched
+    _special_decoders = {"json": lambda x: x}
+
+    # node_ids are unique per source file
+    # and every JsonAbi node comes from a different file
+    node_id = 0
+
+
 class DocStr(VyperNode):
     """
     A docstring.
