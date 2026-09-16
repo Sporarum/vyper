@@ -22,8 +22,9 @@ Members of a module which create new analysis targets
 
 
 class _MemberExtractor:
-    processing: set[vy_ast.Module] = set()
-    seen: dict[vy_ast.Module, ModuleMembers] = dict()
+    def __init__(self):
+        self.processing: set[vy_ast.Module] = set()
+        self.seen: dict[vy_ast.Module, ModuleMembers] = dict()
 
     def process_r(self, module_ast: vy_ast.Module):
         assert module_ast not in self.processing
