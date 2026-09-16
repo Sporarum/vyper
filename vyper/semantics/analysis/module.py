@@ -946,26 +946,23 @@ class ModuleAnalyzer(VyperNodeVisitorBase):
 
     def _load_import(self, import_info: ImportInfo) -> ModuleInfo | InterfaceT:
         path = import_info.compiler_input.path
-        if path.suffix == ".vy":
-            module_ast = import_info.parsed
+        ast = import_info.parsed
+
+        if isinstance(ast, vy_ast.Module):
             with override_global_namespace(Namespace()):
-                module_t = _compute_module_type_r(module_ast)
-                return ModuleInfo(module_t, import_info.alias)
-
-        if path.suffix == ".vyi":
-            module_ast = import_info.parsed
-            with override_global_namespace(Namespace()):
-                module_t = _compute_module_type_r(module_ast)
-
-                # NOTE: might be cleaner to return the whole module, so we
-                # have a ModuleInfo, that way we don't need to have different
-                # code paths for InterfaceT vs ModuleInfo
-                return module_t.interface
-
-        if path.suffix == ".json":
-            abi = import_info.parsed
-            path = import_info.compiler_input.path
-            return InterfaceT.from_json_abi(str(path), abi)
+                module_t = _compute_module_type_r(ast)
+                if not ast.is_interface:
+                    assert path.suffix == ".vy"
+                    return ModuleInfo(module_t, import_info.alias)
+                else:
+                    assert path.suffix == ".vyi"
+                    # NOTE: might be cleaner to return the whole module, so we
+                    # have a ModuleInfo, that way we don't need to have different
+                    # code paths for InterfaceT vs ModuleInfo
+                    return module_t.interface
+        else:
+            assert path.suffix == ".json"
+            return InterfaceT.from_json_abi(str(path), ast)
 
         raise CompilerPanic("unreachable")  # pragma: nocover
 

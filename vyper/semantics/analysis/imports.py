@@ -3,7 +3,7 @@ import dataclasses as dc
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path, PurePath
-from typing import Any, Iterator, Optional
+from typing import Iterator, Optional
 
 import vyper.builtins.interfaces
 import vyper.builtins.stdlib
@@ -86,7 +86,7 @@ def try_parse_abi(file_input: FileInput) -> CompilerInput:
 
 class ImportAnalyzer:
     seen: OrderedSet[vy_ast.Module]
-    _compiler_inputs: dict[CompilerInput, vy_ast.Module]
+    _compiler_inputs: dict[CompilerInput, vy_ast.Module | vy_ast.JsonAbi]
     toplevel_module: vy_ast.Module
 
     def __init__(self, input_bundle: InputBundle, graph: _ImportGraph, module_ast: vy_ast.Module):
@@ -116,7 +116,7 @@ class ImportAnalyzer:
         self._integrity_sum = self._calculate_integrity_sum_r(self.toplevel_module)
 
     @property
-    def compiler_inputs(self) -> dict[CompilerInput, vy_ast.Module]:
+    def compiler_inputs(self) -> dict[CompilerInput, vy_ast.Module | vy_ast.JsonAbi]:
         return self._compiler_inputs
 
     def _calculate_integrity_sum_r(self, module_ast: vy_ast.Module):
@@ -209,7 +209,9 @@ class ImportAnalyzer:
             raise DuplicateImport(f"{alias} imported more than once!", previous_import_stmt, node)
         self.graph.imported_modules[resolved] = node
 
-    def _load_import(self, level: int, module_str: str) -> tuple[CompilerInput, Any]:
+    def _load_import(
+        self, level: int, module_str: str
+    ) -> tuple[CompilerInput, vy_ast.Module | vy_ast.JsonAbi]:
         if _is_builtin(level, module_str):
             return _load_builtin_import(level, module_str)
 
@@ -250,7 +252,7 @@ class ImportAnalyzer:
                 file = try_parse_abi(file)
             assert isinstance(file, JSONInput)  # mypy hint
 
-            return file, file.data
+            return file, vy_ast.JsonAbi(json=file.data)
         except FileNotFoundError:
             pass
 

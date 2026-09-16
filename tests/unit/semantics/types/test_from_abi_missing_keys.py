@@ -1,3 +1,4 @@
+from vyper import ast as vy_ast
 from vyper.semantics.types.function import ContractFunctionT
 from vyper.semantics.types.module import InterfaceT
 from vyper.semantics.types.user import EventT
@@ -52,5 +53,5 @@ class TestInterfaceFromAbi:
             {"name": "noargs", "type": "function", "stateMutability": "view"},
             {"name": "Deposit", "type": "event"},
         ]
-        interface = InterfaceT.from_json_abi("TestInterface", abi)
+        interface = InterfaceT.from_json_abi("TestInterface", vy_ast.JsonAbi(json=abi))
         assert interface is not None

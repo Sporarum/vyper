@@ -40,7 +40,7 @@ class InterfaceT(_UserType):
     def __init__(
         self,
         _id: str,
-        decl_node: Optional[vy_ast.VyperNode],
+        decl_node: vy_ast.VyperNode,
         functions: dict,
         events: dict,
         errors: dict,
@@ -168,7 +168,7 @@ class InterfaceT(_UserType):
     def _from_lists(
         cls,
         interface_name: str,
-        decl_node: Optional[vy_ast.VyperNode],
+        decl_node: vy_ast.VyperNode,
         function_list: list[tuple[str, ContractFunctionT]],
         event_list: Optional[list[tuple[str, EventT]]] = None,
         error_list: Optional[list[tuple[str, ErrorT]]] = None,
@@ -207,7 +207,7 @@ class InterfaceT(_UserType):
         return cls(interface_name, decl_node, functions, events, errors, structs, flags)
 
     @classmethod
-    def from_json_abi(cls, name: str, abi: dict) -> "InterfaceT":
+    def from_json_abi(cls, name: str, abi: vy_ast.JsonAbi) -> "InterfaceT":
         """
         Generate an `InterfaceT` object from an ABI.
 
@@ -215,7 +215,7 @@ class InterfaceT(_UserType):
         ---------
         name : str
             The name of the interface
-        abi : dict
+        abi : JsonAbi
             Contract ABI
 
         Returns
@@ -223,19 +223,21 @@ class InterfaceT(_UserType):
         InterfaceT
             primitive interface type
         """
-        functions: list = cls._dedup_default_arg_overloads(abi)
+        json = abi.json
+
+        functions: list = cls._dedup_default_arg_overloads(json)
         events: list = []
         errors: list = []
 
-        for item in [i for i in abi if i.get("type") == "event"]:
+        for item in [i for i in json if i.get("type") == "event"]:
             events.append((item["name"], EventT.from_abi(item)))
-        for item in [i for i in abi if i.get("type") == "error"]:
+        for item in [i for i in json if i.get("type") == "error"]:
             errors.append((item["name"], ErrorT.from_abi(item)))
 
-        return cls._from_lists(name, None, functions, events, errors)
+        return cls._from_lists(name, abi, functions, events, errors)
 
     @classmethod
-    def _dedup_default_arg_overloads(cls, abi: dict) -> list:
+    def _dedup_default_arg_overloads(cls, abi: list | dict) -> list:
         """
         Deduplicate function ABI entries produced by default-argument
         expansion.
@@ -433,7 +435,7 @@ class ModuleT(VyperType):
         return hash(id(self))
 
     @property
-    def decl_node(self) -> Optional[vy_ast.VyperNode]:  # type: ignore[override]
+    def decl_node(self) -> vy_ast.Module:  # type: ignore[override]
         return self._module
 
     def get_type_member(self, key: str, node: vy_ast.VyperNode) -> "VyperType":

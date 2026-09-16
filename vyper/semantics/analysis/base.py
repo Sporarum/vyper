@@ -124,7 +124,7 @@ class ImportInfo(AnalysisResult):
     alias: str  # the name in the namespace
     qualified_module_name: str  # for error messages
     compiler_input: CompilerInput  # to recover file info for ast export
-    parsed: Any  # (json) abi | AST
+    parsed: vy_ast.Module | vy_ast.JsonAbi
     _typ: Any = None  # type to be filled in during analysis
 
     @property
