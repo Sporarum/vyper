@@ -3,12 +3,12 @@ import pytest
 from vyper import ast as vy_ast
 from vyper.ast import parse_to_ast
 from vyper.compiler.input_bundle import FilesystemInputBundle
-from vyper.semantics.analysis.dependency_resolver import Decl, compute_dependencies, extract_members
+from vyper.semantics.analysis.dependency_resolver import compute_dependencies, extract_members
 from vyper.semantics.analysis.imports import resolve_imports
 from vyper.utils import OrderedSet
 
 
-def _decl_name(decl: Decl) -> str:
+def _decl_name(decl: vy_ast.Decl) -> str:
     if isinstance(decl, vy_ast.VariableDecl):
         return decl.target.id
     return decl.name
