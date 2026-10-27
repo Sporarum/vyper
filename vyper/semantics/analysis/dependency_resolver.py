@@ -1,24 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional, TypeAlias
+from typing import Optional
 
 from vyper import ast as vy_ast
 from vyper.semantics.analysis.common import VyperNodeVisitorBase
 from vyper.utils import OrderedSet
-
-Decl: TypeAlias = (
-    vy_ast.FunctionDef
-    | vy_ast.VariableDecl
-    | vy_ast.StructDef
-    | vy_ast.FlagDef
-    | vy_ast.InterfaceDef
-    | vy_ast.EventDef
-    | vy_ast.ErrorDef
-)
-"""
-Members of a module which create new analysis targets
-"""
 
 
 class _MemberExtractor:
@@ -32,11 +19,11 @@ class _MemberExtractor:
         if module_ast not in self.seen:
             self.processing.add(module_ast)
 
-            members: dict[str, Decl | ModuleMembers] = {}
+            members: dict[str, vy_ast.Decl | ModuleMembers] = {}
             for node in module_ast.body:
                 if isinstance(node, vy_ast.VariableDecl):
                     members[node.target.id] = node
-                elif isinstance(node, Decl):
+                elif isinstance(node, vy_ast.Decl):
                     assert not isinstance(node, vy_ast.VariableDecl)  # help mypy
                     members[node.name] = node
                 elif isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
@@ -59,21 +46,23 @@ def extract_members(root_module_ast: vy_ast.Module) -> dict[vy_ast.Module, Modul
 
 @dataclass
 class ModuleMembers:
-    members: dict[str, Decl | ModuleMembers]
+    members: dict[str, vy_ast.Decl | ModuleMembers]
 
 
 def compute_dependencies(
     module_ast: vy_ast.Module, module_members: ModuleMembers
-) -> dict[Decl, OrderedSet[Decl]]:
+) -> dict[vy_ast.Decl, OrderedSet[vy_ast.Decl]]:
     dependency_resolver = _DependencyResolver(module_members)
     return {
-        node: dependency_resolver.visit(node) for node in module_ast.body if isinstance(node, Decl)
+        node: dependency_resolver.visit(node)
+        for node in module_ast.body
+        if isinstance(node, vy_ast.Decl)
     }
 
 
 def _resolve_attribute(
     node: vy_ast.VyperNode, module_members: ModuleMembers
-) -> Optional[Decl | ModuleMembers]:
+) -> Optional[vy_ast.Decl | ModuleMembers]:
     match node:
         case vy_ast.Name(id=id):
             return module_members.members.get(id)
@@ -89,7 +78,7 @@ def _resolve_attribute(
 
 # TODO: This has a lot of pass-through cases that should really be asserts, but validation
 # happens later
-class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[Decl]]):
+class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
     """
     Note: Only analyzes externally visible dependencies, not for example references made only
           in the body of a function.
@@ -100,62 +89,62 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[Decl]]):
     def __init__(self, module_members: ModuleMembers):
         self.module_members = module_members
 
-    def visit_FunctionDef(self, node: vy_ast.FunctionDef) -> OrderedSet[Decl]:
+    def visit_FunctionDef(self, node: vy_ast.FunctionDef) -> OrderedSet[vy_ast.Decl]:
         "Functions depend on their parameter and return types, and parameter default values"
 
-        arg_type_deps: OrderedSet[Decl] = OrderedSet(
+        arg_type_deps: OrderedSet[vy_ast.Decl] = OrderedSet(
             dep for arg in node.args.args for dep in self.visit(arg.annotation)
         )
 
-        default_deps: OrderedSet[Decl] = OrderedSet(
+        default_deps: OrderedSet[vy_ast.Decl] = OrderedSet(
             dep for expr in node.args.defaults for dep in self.visit(expr)
         )
 
         return arg_type_deps | self.visit(node.returns) | default_deps
 
-    def visit_VariableDecl(self, node: vy_ast.VariableDecl) -> OrderedSet[Decl]:
+    def visit_VariableDecl(self, node: vy_ast.VariableDecl) -> OrderedSet[vy_ast.Decl]:
         # TODO: Do we want the value here ?
         return self.visit(node.annotation) | self.visit(node.value)
 
-    def visit_StructDef(self, node: vy_ast.StructDef) -> OrderedSet[Decl]:
+    def visit_StructDef(self, node: vy_ast.StructDef) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet(
             dep
             for member in node.get_children(vy_ast.AnnAssign)
             for dep in self.visit(member.annotation)
         )
 
-    def visit_FlagDef(self, node: vy_ast.FlagDef) -> OrderedSet[Decl]:
+    def visit_FlagDef(self, node: vy_ast.FlagDef) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet()
 
-    def visit_InterfaceDef(self, node: vy_ast.InterfaceDef) -> OrderedSet[Decl]:
+    def visit_InterfaceDef(self, node: vy_ast.InterfaceDef) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet(
             dep for stub in node.get_children(vy_ast.FunctionDef) for dep in self.visit(stub)
         )
 
-    def visit_EventDef(self, node: vy_ast.EventDef) -> OrderedSet[Decl]:
+    def visit_EventDef(self, node: vy_ast.EventDef) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet(
             dep
             for member in node.get_children(vy_ast.AnnAssign)
             for dep in self.visit(member.annotation)
         )
 
-    def visit_ErrorDef(self, node: vy_ast.ErrorDef) -> OrderedSet[Decl]:
+    def visit_ErrorDef(self, node: vy_ast.ErrorDef) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet(
             dep
             for member in node.get_children(vy_ast.AnnAssign)
             for dep in self.visit(member.annotation)
         )
 
-    def visit_Name(self, node: vy_ast.Name) -> OrderedSet[Decl]:
+    def visit_Name(self, node: vy_ast.Name) -> OrderedSet[vy_ast.Decl]:
         member = self.module_members.members.get(node.id)
-        if isinstance(member, Decl):
+        if isinstance(member, vy_ast.Decl):
             return OrderedSet([member])
         else:
             return OrderedSet()
 
-    def visit_Attribute(self, node: vy_ast.Attribute) -> OrderedSet[Decl]:
+    def visit_Attribute(self, node: vy_ast.Attribute) -> OrderedSet[vy_ast.Decl]:
         resolved = _resolve_attribute(node, self.module_members)
-        if isinstance(resolved, Decl):
+        if isinstance(resolved, vy_ast.Decl):
             return OrderedSet([resolved])
         # Fall back to visiting the base so that e.g. `F.A` (member access on
         # a local FlagDef) records a dep on `F`.
@@ -163,8 +152,8 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[Decl]]):
         # present in signatures
         return self.visit(node.value)
 
-    def visit_VyperNode(self, node: vy_ast.VyperNode) -> OrderedSet[Decl]:
+    def visit_VyperNode(self, node: vy_ast.VyperNode) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet(dep for child in node.get_children() for dep in self.visit(child))
 
-    def visit_NoneType(self, node: None) -> OrderedSet[Decl]:
+    def visit_NoneType(self, node: None) -> OrderedSet[vy_ast.Decl]:
         return OrderedSet()
