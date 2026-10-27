@@ -137,6 +137,14 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
 
     def visit_Name(self, node: vy_ast.Name) -> OrderedSet[vy_ast.Decl]:
         member = self.module_members.members.get(node.id)
+
+        # bit of a hack, functions need to be accessed through `self`
+        # so this is actually a miss-lookup of a function named like a built-in
+        # for example `def int256()`
+        # however (contract) functions cannot be called in constants, so this is fine
+        if isinstance(member, vy_ast.FunctionDef):
+            return OrderedSet()
+
         if isinstance(member, vy_ast.Decl):
             return OrderedSet([member])
         else:
