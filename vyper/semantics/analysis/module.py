@@ -89,8 +89,12 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
 
     members = extract_members(root_module_ast)
 
+    dependencies: dict[vy_ast.Decl, OrderedSet[vy_ast.Decl]] = {}
+
     for module_ast in modules:
-        compute_dependencies(module_ast, members[module_ast])
+        new_deps = compute_dependencies(module_ast, members[module_ast])
+        assert len(dependencies.keys() & new_deps.keys()) == 0
+        dependencies |= new_deps
 
     # TODO: Instead of being recursive, use `modules`
     # Collect module members, partial validation
