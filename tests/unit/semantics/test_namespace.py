@@ -1,5 +1,6 @@
 import pytest
 
+from vyper.builtins.functions import BUILTIN_NAMES
 from vyper.exceptions import CompilerPanic, NamespaceCollision, UndeclaredDefinition
 from vyper.semantics import environment
 from vyper.semantics.namespace import get_namespace
@@ -30,6 +31,10 @@ def test_builtin_types_persist_after_clear(namespace):
     namespace.clear()
     for key, value in PRIMITIVE_TYPES.items():
         assert namespace[key] == value
+
+
+def test_builtin_names_matches_fresh_namespace(namespace):
+    assert BUILTIN_NAMES == frozenset(namespace.keys())
 
 
 def test_context_manager_constant_vars(namespace):

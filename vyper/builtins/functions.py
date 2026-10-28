@@ -63,9 +63,11 @@ from vyper.semantics.analysis.utils import (
     get_possible_types_from_node,
     validate_expected_type,
 )
+from vyper.semantics.environment import CONSTANT_ENVIRONMENT_VARS
 from vyper.semantics.types import (
     INF,
     INF_T,
+    PRIMITIVE_TYPES,
     TYPE_T,
     AddressT,
     BoolT,
@@ -2675,6 +2677,12 @@ STMT_DISPATCH_TABLE = {
 }
 
 BUILTIN_FUNCTIONS = {**STMT_DISPATCH_TABLE, **DISPATCH_TABLE}.keys()
+
+# keys of a fresh namespace
+# TODO: move this somewhere better once the circular import issues are solved
+BUILTIN_NAMES = (
+    frozenset(BUILTIN_FUNCTIONS) | frozenset(PRIMITIVE_TYPES) | frozenset(CONSTANT_ENVIRONMENT_VARS)
+)
 
 
 def get_builtin_functions():

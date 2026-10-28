@@ -138,11 +138,13 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
     def visit_Name(self, node: vy_ast.Name) -> OrderedSet[vy_ast.Decl]:
         member = self.module_members.members.get(node.id)
 
-        # bit of a hack, functions need to be accessed through `self`
-        # so this is actually a miss-lookup of a function named like a built-in
-        # for example `def int256()`
-        # however (contract) functions cannot be called in constants, so this is fine
-        if isinstance(member, vy_ast.FunctionDef):
+        # NOTE cyclic import!
+        from vyper.builtins.functions import BUILTIN_NAMES
+
+        # Bit of a hack: we know there would be a collision, but instead we let it be reported later
+        # Note that functions named like built-ins (`def int256()` is valid) also go through here
+        # This is fine since (user) functions are never valid in constants
+        if node.id in BUILTIN_NAMES:
             return OrderedSet()
 
         if isinstance(member, vy_ast.Decl):
