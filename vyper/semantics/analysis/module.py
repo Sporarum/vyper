@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from graphlib import CycleError, TopologicalSorter
 from itertools import zip_longest
 from typing import Optional
 
@@ -87,10 +88,30 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
         each module is imported by another one, except for a single module
     """
 
-    members = extract_members(root_module_ast)
+    module_namespaces = extract_members(root_module_ast)
+
+    members: dict[vy_ast.Module, list[vy_ast.Decl]] = dict()
+    "Sorted in topological order"
 
     for module_ast in modules:
-        compute_dependencies(module_ast, members[module_ast])
+        dependencies = compute_dependencies(module_ast, module_namespaces[module_ast])
+        try:
+            members[module_ast] = list(TopologicalSorter(dependencies).static_order())
+        except CycleError as e:
+            assert e.args[0] == "nodes are in a cycle"
+            cycle = e.args[1][::-1]  # cycle in reference order, opposite of dependency order
+            assert isinstance(cycle, list)
+
+            names = [x.target.id if isinstance(x, vy_ast.VariableDecl) else x.name for x in cycle]
+            assert len(names) > 0
+
+            if len(names) == 1:
+                # for consistency with functions, report as "foo -> foo"
+                names.append(names[0])
+
+            raise StructureException(
+                f"Cyclic dependency in module {module_ast.path}: {' -> '.join(names)}", *cycle
+            ) from None
 
     # TODO: Instead of being recursive, use `modules`
     # Collect module members, partial validation
