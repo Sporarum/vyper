@@ -136,8 +136,6 @@ def test_cyclic_dependency(bad_code, expected_cycle):
     assert e.value.hint is None
 
 
-# TODO: Fix this
-@pytest.mark.xfail()
 def test_function_name_shadows_struct():
     code = """
 struct Foo:

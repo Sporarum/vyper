@@ -20,19 +20,33 @@ class _MemberExtractor:
             self.processing.add(module_ast)
 
             members: dict[str, vy_ast.Decl | ModuleMembers] = {}
+            self_members: dict[str, vy_ast.Decl] = {}
             for node in module_ast.body:
                 if isinstance(node, vy_ast.VariableDecl):
-                    members[node.target.id] = node
+                    if node.is_constant:
+                        members[node.target.id] = node
+                    else:
+                        self_members[node.target.id] = node
+                elif isinstance(node, vy_ast.FunctionDef):
+                    self_members[node.name] = node
                 elif isinstance(node, vy_ast.Decl):
-                    assert not isinstance(node, vy_ast.VariableDecl)  # help mypy
+                    assert not isinstance(node, (vy_ast.VariableDecl, vy_ast.FunctionDef))  # mypy
                     members[node.name] = node
                 elif isinstance(node, (vy_ast.Import, vy_ast.ImportFrom)):
                     for info in node._metadata.get("import_infos", []):
                         if isinstance(info.parsed, vy_ast.Module):
                             members[info.alias] = self.process_r(info.parsed)
 
+            # NOTE cyclic import!
+            from vyper.builtins.functions import BUILTIN_NAMES
+
+            # Bit of a hack: we know there would be a collision, but instead we let it
+            # be reported later
+            # TODO: Move collision checking earlier
+            members = {k: v for k, v in members.items() if k not in BUILTIN_NAMES}
+
             self.processing.remove(module_ast)
-            self.seen[module_ast] = ModuleMembers(members)
+            self.seen[module_ast] = ModuleMembers(members, self_members)
 
         return self.seen[module_ast]
 
@@ -47,6 +61,9 @@ def extract_members(root_module_ast: vy_ast.Module) -> dict[vy_ast.Module, Modul
 @dataclass
 class ModuleMembers:
     members: dict[str, vy_ast.Decl | ModuleMembers]
+    "Accessible by bare name: types, constants and imported modules"
+    self_members: dict[str, vy_ast.Decl]
+    "Accessible through `self`: functions and state variables"
 
 
 def compute_dependencies(
@@ -64,12 +81,17 @@ def _resolve_attribute(
     node: vy_ast.VyperNode, module_members: ModuleMembers
 ) -> Optional[vy_ast.Decl | ModuleMembers]:
     match node:
+        case vy_ast.Attribute(attr=attr, value=vy_ast.Name(id="self")):
+            return module_members.self_members.get(attr)
         case vy_ast.Name(id=id):
             return module_members.members.get(id)
         case vy_ast.Attribute(attr=attr, value=value):
             new_module_info = _resolve_attribute(value, module_members)
             if isinstance(new_module_info, ModuleMembers):
-                return new_module_info.members.get(attr)
+                # from outside a module, both namespaces are accessed by attribute
+                if attr in new_module_info.members:
+                    return new_module_info.members[attr]
+                return new_module_info.self_members.get(attr)
             else:
                 return None
         case _:
@@ -138,15 +160,6 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
     def visit_Name(self, node: vy_ast.Name) -> OrderedSet[vy_ast.Decl]:
         member = self.module_members.members.get(node.id)
 
-        # NOTE cyclic import!
-        from vyper.builtins.functions import BUILTIN_NAMES
-
-        # Bit of a hack: we know there would be a collision, but instead we let it be reported later
-        # Note that functions named like built-ins (`def int256()` is valid) also go through here
-        # This is fine since (user) functions are never valid in constants
-        if node.id in BUILTIN_NAMES:
-            return OrderedSet()
-
         if isinstance(member, vy_ast.Decl):
             return OrderedSet([member])
         else:
@@ -158,8 +171,6 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
             return OrderedSet([resolved])
         # Fall back to visiting the base so that e.g. `F.A` (member access on
         # a local FlagDef) records a dep on `F`.
-        # Note: self.x is not handled by this function, but this is fine since only immutables are
-        # present in signatures
         return self.visit(node.value)
 
     def visit_VyperNode(self, node: vy_ast.VyperNode) -> OrderedSet[vy_ast.Decl]:

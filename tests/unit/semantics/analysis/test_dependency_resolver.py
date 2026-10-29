@@ -146,6 +146,16 @@ error MyErr:
 """,
         {"S": [], "MyErr": ["S"]},
     ),
+    (
+        # functions live in the `self` namespace, so they can shadow a built-in;
+        # the `int256` annotation is the built-in type, not this function
+        """
+@external
+def int256() -> int256:
+    return 0
+""",
+        {"int256": []},
+    ),
 ]
 
 
@@ -289,4 +299,54 @@ def foo(p: Point) -> Point:
 
     assert deps[struct_def] == OrderedSet()
     assert deps[var_decl] == OrderedSet([struct_def])
+    assert deps[func_def] == OrderedSet([struct_def])
+
+
+def test_self_attribute_resolves_to_variable_decl():
+    # `self.X` is resolved through the `self` namespace. Note that a storage read is not a
+    # valid default value, this is only rejected by later validation.
+    src = """
+X: uint256
+
+@external
+def foo(a: uint256 = self.X) -> uint256:
+    return a
+"""
+    assert _run(src) == {"X": [], "foo": ["X"]}
+
+
+def test_module_attribute_resolves_through_self_namespace(make_input_bundle):
+    # from outside a module, both namespaces are accessed by attribute
+    lib_src = """
+counter: uint256
+"""
+    main_src = """
+import lib
+
+X: constant(uint256) = lib.counter
+"""
+    input_bundle = make_input_bundle({"lib.vy": lib_src})
+    assert _run(main_src, input_bundle=input_bundle) == {"X": ["counter"]}
+
+
+def test_function_name_shadows_struct():
+    # the struct is in the bare-name namespace and the function in the `self` namespace,
+    # so the annotation resolves to the struct and there is no (bogus) self-dependency
+    src = """
+struct Foo:
+    x: uint256
+
+@external
+def Foo(a: Foo) -> uint256:
+    return a.x
+"""
+    module_ast = parse_to_ast(src)
+    resolve_imports(module_ast, FilesystemInputBundle([]))
+    members = extract_members(module_ast)
+    deps = compute_dependencies(module_ast, members[module_ast])
+
+    (struct_def,) = module_ast.get_children(vy_ast.StructDef)
+    (func_def,) = module_ast.get_children(vy_ast.FunctionDef)
+
+    assert deps[struct_def] == OrderedSet()
     assert deps[func_def] == OrderedSet([struct_def])
