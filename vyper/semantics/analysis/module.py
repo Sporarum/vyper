@@ -71,6 +71,10 @@ from vyper.semantics.types.module import ModuleT
 from vyper.semantics.types.utils import type_from_annotation
 from vyper.utils import OrderedSet
 
+# TODO: Move this alongside the method that generates it
+ModuleMembership = dict[vy_ast.Module, list[vy_ast.Decl]]
+"""For each module, its declarations in dependency order"""
+
 
 def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
     """
@@ -90,17 +94,21 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
 
     module_namespaces = extract_members(root_module_ast)
 
-    members: dict[vy_ast.Module, list[vy_ast.Decl]] = dict()
+    members: ModuleMembership = dict()
     "Sorted in topological order"
 
-    for module_ast in modules:
-        dependencies = compute_dependencies(module_ast, module_namespaces[module_ast])
+    for module_ast, module_members in module_namespaces.items():
+        dependencies = compute_dependencies(module_ast, module_members)
         try:
-            members[module_ast] = list(TopologicalSorter(dependencies).static_order())
+            raw_members = TopologicalSorter(dependencies).static_order()
+
+            # `TopologicalSorter` does not preserve `dependencies.keys()`, so filter the added ones
+            # (for `{main.foo: {lib.bar}}` it returns `[lib.bar, main.foo]`)
+            members[module_ast] = [node for node in raw_members if node in dependencies]
+
         except CycleError as e:
             assert e.args[0] == "nodes are in a cycle"
             cycle = e.args[1][::-1]  # cycle in reference order, opposite of dependency order
-            assert isinstance(cycle, list)
 
             names = [x.target.id if isinstance(x, vy_ast.VariableDecl) else x.name for x in cycle]
             assert len(names) > 0
@@ -115,7 +123,7 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
 
     # TODO: Instead of being recursive, use `modules`
     # Collect module members, partial validation
-    ret = _compute_module_type_r(root_module_ast)
+    ret = _compute_module_type_r(root_module_ast, members)
 
     for module_ast in modules:
         _check_overrides(module_ast)
@@ -143,7 +151,7 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
     return ret
 
 
-def _compute_module_type_r(module_ast: vy_ast.Module) -> ModuleT:
+def _compute_module_type_r(module_ast: vy_ast.Module, members: ModuleMembership) -> ModuleT:
     """validate semantics and annotate AST with type/semantics information"""
 
     if "type" in module_ast._metadata:
@@ -155,7 +163,7 @@ def _compute_module_type_r(module_ast: vy_ast.Module) -> ModuleT:
     namespace = get_namespace()
 
     with namespace.enter_scope():
-        analyzer = ModuleAnalyzer(module_ast, namespace)
+        analyzer = ModuleAnalyzer(module_ast, namespace, members)
         analyzer.analyze_module_body()
 
         generate_public_variable_getters(module_ast)
@@ -490,9 +498,12 @@ def _is_supported_constant_type(typ: VyperType) -> bool:
 class ModuleAnalyzer(VyperNodeVisitorBase[None]):
     scope_name = "module"
 
-    def __init__(self, module_node: vy_ast.Module, namespace: Namespace) -> None:
+    def __init__(
+        self, module_node: vy_ast.Module, namespace: Namespace, members: ModuleMembership
+    ) -> None:
         self.ast = module_node
         self.namespace = namespace
+        self.members = members
 
         # keep track of exported functions to prevent duplicate exports
         self._all_functions: dict[ContractFunctionT, vy_ast.VyperNode] = {}
@@ -512,6 +523,11 @@ class ModuleAnalyzer(VyperNodeVisitorBase[None]):
         assert "type" not in self.ast._metadata
 
         self._to_visit = self.ast.body.copy()
+
+        members = self.members[self.ast]
+        assert all(m in self._to_visit for m in members), f"{members = }, {self._to_visit = }"
+        # assert set(members) == set(self._to_visit)
+        # ^ doesn't work because members does not contain the imports
 
         # handle imports
         self._visit_nodes_linear((vy_ast.Import, vy_ast.ImportFrom))
@@ -989,13 +1005,13 @@ class ModuleAnalyzer(VyperNodeVisitorBase[None]):
         if path.suffix == ".vy":
             module_ast = import_info.parsed
             with override_global_namespace(Namespace()):
-                module_t = _compute_module_type_r(module_ast)
+                module_t = _compute_module_type_r(module_ast, self.members)
                 return ModuleInfo(module_t, import_info.decl_node)
 
         if path.suffix == ".vyi":
             module_ast = import_info.parsed
             with override_global_namespace(Namespace()):
-                module_t = _compute_module_type_r(module_ast)
+                module_t = _compute_module_type_r(module_ast, self.members)
 
                 # NOTE: might be cleaner to return the whole module, so we
                 # have a ModuleInfo, that way we don't need to have different
