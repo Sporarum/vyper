@@ -122,6 +122,16 @@ event E:
     """,
         "S -> Foo -> E -> S",
     ),
+    (
+        """
+Z: constant(uint256) = self.f()
+
+@internal
+def f() -> uint256:
+    return Z
+    """,
+        "Z -> f -> Z",
+    ),
 ]
 
 

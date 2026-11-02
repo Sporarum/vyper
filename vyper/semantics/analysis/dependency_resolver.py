@@ -102,8 +102,8 @@ def _resolve_attribute(
 # happens later
 class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
     """
-    Note: Only analyzes externally visible dependencies, not for example references made only
-          in the body of a function.
+    Note: Abstract methods do not inherit their override's dependencies
+          As a consequence, cyclical function calls cannot be determined from this alone
     """
 
     scope_name = "module"
@@ -112,7 +112,6 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
         self.module_members = module_members
 
     def visit_FunctionDef(self, node: vy_ast.FunctionDef) -> OrderedSet[vy_ast.Decl]:
-        "Functions depend on their parameter and return types, and parameter default values"
 
         arg_type_deps: OrderedSet[vy_ast.Decl] = OrderedSet(
             dep for arg in node.args.args for dep in self.visit(arg.annotation)
@@ -122,7 +121,11 @@ class _DependencyResolver(VyperNodeVisitorBase[OrderedSet[vy_ast.Decl]]):
             dep for expr in node.args.defaults for dep in self.visit(expr)
         )
 
-        return arg_type_deps | self.visit(node.returns) | default_deps
+        body_deps: OrderedSet[vy_ast.Decl] = OrderedSet(
+            dep for stmt in node.body for dep in self.visit(stmt)
+        )
+
+        return arg_type_deps | self.visit(node.returns) | default_deps | body_deps
 
     def visit_VariableDecl(self, node: vy_ast.VariableDecl) -> OrderedSet[vy_ast.Decl]:
         # TODO: Do we want the value here ?

@@ -32,7 +32,7 @@ def bar():
     with pytest.raises(CallViolation) as e:
         analyze_module_single(vyper_module)
 
-    assert e.value.message == "Contract contains cyclic function call: foo -> bar -> bar"
+    assert e.value.message == "Contract contains cyclic function call: bar -> bar"
 
 
 def test_cyclic_function_call():
@@ -101,7 +101,7 @@ def potato():
     with pytest.raises(CallViolation) as e:
         analyze_module_single(vyper_module)
 
-    expected_message = "Contract contains cyclic function call: foo -> bar -> baz -> potato -> bar"
+    expected_message = "Contract contains cyclic function call: bar -> baz -> potato -> bar"
 
     assert e.value.message == expected_message
 

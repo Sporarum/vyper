@@ -36,7 +36,7 @@ from vyper.semantics.analysis.base import (
     VarInfo,
 )
 from vyper.semantics.analysis.common import VyperNodeVisitorBase
-from vyper.semantics.analysis.constant_folding import constant_fold
+from vyper.semantics.analysis.constant_folding import ConstantFolder
 from vyper.semantics.analysis.dependency_resolver import compute_dependencies, extract_members
 from vyper.semantics.analysis.getters import generate_public_variable_getters
 from vyper.semantics.analysis.imports import ImportAnalyzer
@@ -111,15 +111,21 @@ def analyze_modules(imports: ImportAnalyzer) -> ModuleT:
             cycle = e.args[1][::-1]  # cycle in reference order, opposite of dependency order
 
             names = [x.target.id if isinstance(x, vy_ast.VariableDecl) else x.name for x in cycle]
-            assert len(names) > 0
+            assert len(names) >= 2
 
-            if len(names) == 1:
-                # for consistency with functions, report as "foo -> foo"
-                names.append(names[0])
+            assert cycle[0] is cycle[-1]
+            nodes = cycle[:-1]  # remove the duplicate
 
-            raise StructureException(
-                f"Cyclic dependency in module {module_ast.path}: {' -> '.join(names)}", *cycle
-            ) from None
+            cycle_str = " -> ".join(names)
+
+            if all(isinstance(n, vy_ast.FunctionDef) for n in nodes):
+                raise CallViolation(
+                    f"Contract contains cyclic function call: {cycle_str}", *nodes
+                ) from None
+            else:
+                raise StructureException(
+                    f"Cyclic dependency in module {module_ast.path}: {cycle_str}", *nodes
+                ) from None
 
     # TODO: Instead of being recursive, use `modules`
     # Collect module members, partial validation
@@ -532,26 +538,18 @@ class ModuleAnalyzer(VyperNodeVisitorBase[None]):
         # handle imports
         self._visit_nodes_linear((vy_ast.Import, vy_ast.ImportFrom))
 
-        # we can resolve constants as soon as imports are handled.
-        constant_fold(self.ast)
-
         # handle ownership decls, mutate ModuleInfo.ownership
         self._visit_nodes_linear((vy_ast.UsesDecl, vy_ast.InitializesDecl))
 
-        # handle some node types using a dependency resolution routine
-        # which loops, swallowing exceptions until all nodes are processed
-        type_decls = (
-            vy_ast.FlagDef,
-            vy_ast.StructDef,
-            vy_ast.InterfaceDef,
-            vy_ast.ErrorDef,
-            vy_ast.EventDef,
-        )
-        self._visit_nodes_looping(type_decls)
+        constant_folder = ConstantFolder(self.ast)
 
-        # handle functions
-        # run before exports for exception handling priority
-        self._visit_nodes_looping((vy_ast.VariableDecl, vy_ast.FunctionDef))
+        for member in members:
+            if isinstance(member, vy_ast.ImplementsDecl):
+                # need to deal with at the end
+                continue
+            constant_folder.visit(member)
+            self.visit(member)
+            self._to_visit.remove(member)
 
         # mutates _exposed_functions
         self._visit_nodes_linear(vy_ast.ExportsDecl)

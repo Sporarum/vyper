@@ -62,7 +62,7 @@ def foo() -> uint256:
     x: S = empty(S)
     return self.FOO + x.a
 """,
-        {"S": [], "FOO": [], "foo": []},
+        {"S": [], "FOO": [], "foo": ["FOO", "S"]},
     ),
     (
         """
@@ -183,17 +183,6 @@ Z: bytes32
 """,
         {"X": [], "Y": [], "Z": []},
     ),
-    (
-        """
-struct S:
-    a: uint256
-
-@external
-def foo(x: S) -> S:
-    return x
-""",
-        {"S": [], "foo": ["S"]},
-    ),
 ]
 
 
@@ -217,29 +206,33 @@ X: lib.LibStruct
 @external
 def foo() -> uint256:
     return lib.FOO
-
-@external
-def bar(x: uint256 = lib.FOO) -> uint256:
-    return x
 """
     input_bundle = make_input_bundle({"lib.vy": lib_src})
-    assert _run(main_src, input_bundle=input_bundle) == {
-        "X": ["LibStruct"],
-        "foo": [],  # body-only ref to lib.FOO is not captured
-        "bar": ["FOO"],  # default value IS captured
-    }
+    assert _run(main_src, input_bundle=input_bundle) == {"X": ["LibStruct"], "foo": ["FOO"]}
 
 
-def test_attribute_on_non_import_is_no_dep(make_input_bundle):
-    # self.X is an Attribute whose value is not an imported alias -> no dep.
+def test_reference_before_declaration_is_a_dep():
     src = """
-X: uint256
-
 @external
 def foo() -> uint256:
-    return self.X
+    return N
+
+N: constant(uint256) = 3
 """
-    assert _run(src) == {"X": [], "foo": []}
+    assert _run(src) == {"foo": ["N"], "N": []}
+
+
+def test_calls_in_body_are_deps():
+    src = """
+@internal
+def bar() -> uint256:
+    return 1
+
+@internal
+def baz() -> uint256:
+    return self.bar() + self.baz()
+"""
+    assert _run(src) == {"bar": [], "baz": ["bar", "baz"]}
 
 
 def test_import_missing_member_produces_no_dep(make_input_bundle):

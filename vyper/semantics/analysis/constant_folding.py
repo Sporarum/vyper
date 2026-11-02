@@ -84,9 +84,29 @@ class ConstantFolder(VyperNodeVisitorBase[None]):
         return node
 
     def visit_Name(self, node) -> vy_ast.ExprNode:
-        try:
-            return self._constants[node.id]
-        except KeyError:
+        namespace = get_namespace()
+        if node.id in namespace:
+
+            # TODO: Remove all these conditions
+
+            decl_info = namespace[node.id]
+
+            if not hasattr(decl_info, "decl_node"):
+                raise UnfoldableNode("no decl_node", node)
+
+            decl_node = decl_info.decl_node
+
+            if decl_node is None:
+                raise UnfoldableNode("built-in", node)
+
+            if not isinstance(decl_node, vy_ast.VariableDecl):
+                raise UnfoldableNode("not a variable", node)
+
+            if not hasattr(decl_node.value, "get_folded_value"):
+                raise UnfoldableNode("no get_folded_value", node)
+
+            return decl_node.value.get_folded_value()
+        else:
             raise UnfoldableNode("unknown name", node)
 
     def visit_Attribute(self, node) -> vy_ast.ExprNode:
