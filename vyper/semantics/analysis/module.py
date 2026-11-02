@@ -544,9 +544,6 @@ class ModuleAnalyzer(VyperNodeVisitorBase[None]):
         constant_folder = ConstantFolder()
 
         for member in members:
-            if isinstance(member, vy_ast.ImplementsDecl):
-                # need to deal with at the end
-                continue
             constant_folder.visit(member)
             self.visit(member)
             self._to_visit.remove(member)
