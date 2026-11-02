@@ -5,55 +5,7 @@ from vyper.semantics.analysis.common import VyperNodeVisitorBase
 from vyper.semantics.namespace import get_namespace
 
 
-def constant_fold(module_ast: vy_ast.Module):
-    ConstantFolder(module_ast).run()
-
-
 class ConstantFolder(VyperNodeVisitorBase[None]):
-    def __init__(self, module_ast):
-        self._constants = {}
-        self._module_ast = module_ast
-
-    def run(self):
-        self._get_constants()
-        self.visit(self._module_ast)
-
-    def _get_constants(self):
-        module = self._module_ast
-        const_var_decls = module.get_children(vy_ast.VariableDecl, {"is_constant": True})
-
-        while True:
-            n_processed = 0
-
-            for c in const_var_decls.copy():
-                # visit the entire constant node in case its type annotation
-                # has unfolded constants in it.
-                self.visit(c)
-
-                assert c.value is not None  # guaranteed by VariableDecl.validate()
-                try:
-                    val = c.value.get_folded_value()
-                except UnfoldableNode:
-                    # not foldable, maybe it depends on other constants
-                    # so try again later
-                    continue
-
-                # note that if a constant is redefined, its value will be
-                # overwritten, but it is okay because the error is handled
-                # downstream
-                name = c.target.id
-                self._constants[name] = val
-
-                n_processed += 1
-                const_var_decls.remove(c)
-
-            if n_processed == 0:
-                # this condition means that there are some constant vardecls
-                # whose values are not foldable. this can happen for struct
-                # and interface constants for instance. these are valid constant
-                # declarations, but we just can't fold them at this stage.
-                break
-
     def visit(self, node):
         if node.has_folded_value:
             return node.get_folded_value()

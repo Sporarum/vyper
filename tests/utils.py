@@ -9,7 +9,7 @@ from vyper import ast as vy_ast
 from vyper.compiler.input_bundle import FilesystemInputBundle, JSONInput
 from vyper.compiler.phases import CompilerData
 from vyper.semantics.analysis import analyze_modules
-from vyper.semantics.analysis.constant_folding import constant_fold
+from vyper.semantics.analysis.constant_folding import ConstantFolder
 from vyper.semantics.analysis.imports import resolve_imports
 from vyper.utils import DECIMAL_EPSILON, round_towards_zero
 
@@ -28,7 +28,7 @@ def working_directory(directory):
 
 def parse_and_fold(source_code):
     ast = vy_ast.parse_to_ast(source_code)
-    constant_fold(ast)
+    ConstantFolder().visit(ast)
     return ast
 
 

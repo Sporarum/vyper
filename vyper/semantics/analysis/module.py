@@ -541,7 +541,7 @@ class ModuleAnalyzer(VyperNodeVisitorBase[None]):
         # handle ownership decls, mutate ModuleInfo.ownership
         self._visit_nodes_linear((vy_ast.UsesDecl, vy_ast.InitializesDecl))
 
-        constant_folder = ConstantFolder(self.ast)
+        constant_folder = ConstantFolder()
 
         for member in members:
             if isinstance(member, vy_ast.ImplementsDecl):
