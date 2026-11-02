@@ -5,7 +5,7 @@ from vyper.semantics.analysis.common import VyperNodeVisitorBase
 from vyper.semantics.namespace import get_namespace
 
 
-class ConstantFolder(VyperNodeVisitorBase[None]):
+class ConstantFolder(VyperNodeVisitorBase[vy_ast.VyperNode]):
     def visit(self, node):
         if node.has_folded_value:
             return node.get_folded_value()
@@ -18,19 +18,15 @@ class ConstantFolder(VyperNodeVisitorBase[None]):
                 pass
 
         try:
-            for class_ in node.__class__.mro():
-                ast_type = class_.__name__
+            folded_value = super().visit(node)
+            node._set_folded_value(folded_value)
+            return folded_value
 
-                visitor_fn = getattr(self, f"visit_{ast_type}", None)
-                if visitor_fn:
-                    folded_value = visitor_fn(node)
-                    node._set_folded_value(folded_value)
-                    return folded_value
         except UnfoldableNode:
-            # ignore bubbled up exceptions
-            pass
+            return node
 
-        return node
+    def visit_VyperNode(self, node):
+        raise UnfoldableNode("no folding rule")
 
     def visit_Constant(self, node) -> vy_ast.ExprNode:
         return node
